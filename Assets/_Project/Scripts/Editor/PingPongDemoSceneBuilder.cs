@@ -128,11 +128,19 @@ public static class PingPongDemoSceneBuilder
         var material = AssetDatabase.LoadAssetAtPath<Material>(matPath);
         if (material != null) return material;
 
-        material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        if (material.shader == null)
+        var shader =
+            Shader.Find("Universal Render Pipeline/Lit") ??
+            Shader.Find("Standard") ??
+            Shader.Find("Unlit/Color") ??
+            Shader.Find("Legacy Shaders/Diffuse");
+
+        if (shader == null)
         {
-            material = new Material(Shader.Find("Standard"));
+            Debug.LogError($"Could not find a valid shader for material: {materialName}");
+            return null;
         }
+
+        material = new Material(shader);
         material.color = color;
         AssetDatabase.CreateAsset(material, matPath);
         return material;
