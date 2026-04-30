@@ -34,6 +34,7 @@ public static class PingPongDemoSceneBuilder
     {
         EnsureFolders();
         CreateOrUpdateAdaptedPrefabs();
+        RepairExistingBallObjectsInScene();
 
         var environment = GetOrCreate("Environment");
         var pingPong = GetOrCreate("PingPong");
@@ -50,7 +51,7 @@ public static class PingPongDemoSceneBuilder
                         LoadOrCreatePrefabAsset("PingPongNet", PrimitiveType.Cube, new Vector3(2.4f, 0.25f, 0.03f), CreateOrLoadMaterial("NetWhite", new Color(0.88f, 0.88f, 0.88f)));
         var paddlePrefab = LoadAdaptedPrefab("PingPongPaddle") ??
                            LoadOrCreatePrefabAsset("PingPongPaddle", PrimitiveType.Cube, new Vector3(0.35f, 0.05f, 0.25f), CreateOrLoadMaterial("PaddleRed", new Color(0.66f, 0.11f, 0.11f)));
-        var ballPrefab = LoadAdaptedPrefab("PingPongBall") ?? CreateOrUpdateBallPrefab();
+        var ballPrefab = LoadAdaptedBallPrefab() ?? CreateOrUpdateBallPrefab();
 
         var table = InstantiateOrReuse("Table", tablePrefab, pingPong.transform, new Vector3(0f, 0.75f, 2f), GetInstanceScale(tablePrefab, new Vector3(2.4f, 0.08f, 1.4f)));
         var net = InstantiateOrReuse("Net", netPrefab, pingPong.transform, new Vector3(0f, 0.95f, 2f), GetInstanceScale(netPrefab, new Vector3(2.4f, 0.25f, 0.03f)));
@@ -140,6 +141,13 @@ public static class PingPongDemoSceneBuilder
     private static GameObject LoadAdaptedPrefab(string assetName)
     {
         return AssetDatabase.LoadAssetAtPath<GameObject>($"{AdaptedRoot}/{assetName}_Adapted.prefab");
+    }
+
+    private static GameObject LoadAdaptedBallPrefab()
+    {
+        var path = $"{AdaptedRoot}/PingPongBall_Adapted.prefab";
+        RepairBallPrefabAsset(path);
+        return AssetDatabase.LoadAssetAtPath<GameObject>(path);
     }
 
     private static Vector3 GetInstanceScale(GameObject prefab, Vector3 fallbackScale)
@@ -250,16 +258,7 @@ public static class PingPongDemoSceneBuilder
         var collider = temp.GetComponent<SphereCollider>() ?? temp.AddComponent<SphereCollider>();
         collider.radius = 0.5f;
 
-        var rb = temp.GetComponent<Rigidbody>() ?? temp.AddComponent<Rigidbody>();
-        rb.mass = 0.0027f;
-        rb.drag = 0.03f;
-        rb.angularDrag = 0.05f;
-        rb.useGravity = true;
-        rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        rb.interpolation = RigidbodyInterpolation.Interpolate;
-
-        temp.AddComponent<PingPongBall>();
-        temp.AddComponent<BallLifetime>();
+        ConfigureBallComponents(temp);
         AttachBounceAudio(temp);
 
         SaveAdaptedPrefab(temp, "PingPongBall");
@@ -365,7 +364,16 @@ public static class PingPongDemoSceneBuilder
         var collider = temp.GetComponent<SphereCollider>() ?? temp.AddComponent<SphereCollider>();
         collider.radius = 0.5f;
 
-        var rb = temp.GetComponent<Rigidbody>() ?? temp.AddComponent<Rigidbody>();
+        ConfigureBallComponents(temp);
+
+        var saved = PrefabUtility.SaveAsPrefabAsset(temp, path);
+        Object.DestroyImmediate(temp);
+        return saved;
+    }
+
+    private static void ConfigureBallComponents(GameObject ball)
+    {
+        var rb = ball.GetComponent<Rigidbody>() ?? ball.AddComponent<Rigidbody>();
         rb.mass = 0.0027f;
         rb.drag = 0.03f;
         rb.angularDrag = 0.05f;
@@ -373,12 +381,39 @@ public static class PingPongDemoSceneBuilder
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        if (temp.GetComponent<PingPongBall>() == null) temp.AddComponent<PingPongBall>();
-        if (temp.GetComponent<BallLifetime>() == null) temp.AddComponent<BallLifetime>();
+        if (ball.GetComponent<PingPongBall>() == null) ball.AddComponent<PingPongBall>();
+        if (ball.GetComponent<BallLifetime>() == null) ball.AddComponent<BallLifetime>();
+    }
 
-        var saved = PrefabUtility.SaveAsPrefabAsset(temp, path);
-        Object.DestroyImmediate(temp);
-        return saved;
+    private static void RepairBallPrefabAsset(string path)
+    {
+        if (AssetDatabase.LoadAssetAtPath<GameObject>(path) == null) return;
+
+        var root = PrefabUtility.LoadPrefabContents(path);
+        if (root == null) return;
+
+        ConfigureBallComponents(root);
+        AttachBounceAudio(root);
+        PrefabUtility.SaveAsPrefabAsset(root, path);
+        PrefabUtility.UnloadPrefabContents(root);
+    }
+
+    private static void RepairExistingBallObjectsInScene()
+    {
+        foreach (var ball in Object.FindObjectsOfType<PingPongBall>(true))
+        {
+            ConfigureBallComponents(ball.gameObject);
+            EditorUtility.SetDirty(ball);
+        }
+
+        foreach (var transform in Object.FindObjectsOfType<Transform>(true))
+        {
+            if (transform.name == "PingPongBall" || transform.name == "PingPongBall_Adapted")
+            {
+                ConfigureBallComponents(transform.gameObject);
+                EditorUtility.SetDirty(transform.gameObject);
+            }
+        }
     }
 
     private static GameObject InstantiateOrReuse(string name, GameObject prefab, Transform parent, Vector3 position, Vector3 scale)

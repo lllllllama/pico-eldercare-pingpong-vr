@@ -13,8 +13,17 @@ public class PingPongBall : MonoBehaviour
 
     private void Awake()
     {
-        _rb = GetComponent<Rigidbody>();
+        if (!TryGetComponent(out _rb))
+        {
+            _rb = gameObject.AddComponent<Rigidbody>();
+        }
+
+        _rb.mass = 0.0027f;
+        _rb.drag = 0.03f;
+        _rb.angularDrag = 0.05f;
+        _rb.useGravity = true;
         _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+        _rb.interpolation = RigidbodyInterpolation.Interpolate;
     }
 
     private void OnCollisionEnter(Collision collision)
