@@ -1,20 +1,38 @@
 # VRTableTennis Reuse Notes
 
 ## Reuse / migration status
-- Target resources for migration: ball, paddle, table, net prefabs/models/materials/textures/audio.
-- In this repository execution environment, direct remote fetch of `kushal-goenka/VRTableTennis` was blocked, so binary asset migration could not be completed in-commit.
-- To keep delivery usable and demonstrable, this revision provides **assetized local fallback pack** under `_Project` (prefabs + materials) and uses it as first-class resources instead of runtime temporary objects.
+- Minimal local migration has been applied for ball, paddle, table, net, materials, required texture, and hit/ambience audio.
+- Original selected files are stored under `Assets/_Project/External/VRTableTennis/Original`.
+- Cleaned usable prefabs are stored under `Assets/_Project/External/VRTableTennis/Adapted`.
+- Full scenes and legacy XR/Oculus/SteamVR/Photon scripts were not migrated.
 
 ## What is migrated now
-- Gameplay structure and layout conventions inspired by VRTableTennis:
-  - fixed table-centered training lane
-  - periodic serve loop
-  - right-hand paddle follow + velocity-based return
-- Ball rigidbody defaults and collider strategy are configured for stable demo interaction.
+- `Original/Models/PPPaddle.fbx`
+- `Original/Models/PingPondTable.fbx`
+- `Original/Models/Ball.fbx`
+- `Original/Materials/PingPongTable*.mat`
+- `Original/Materials/Metal.mat`
+- `Original/Materials/seamless-wood-texture-free-6.*`
+- `Original/Audio/single_bounce.mp3`
+- `Original/Audio/ping_pong_whoosh.mp3`
+- `Original/Audio/cheering.mp3`
+- `Adapted/PingPongPaddle_Adapted.prefab`
+- `Adapted/PingPongTable_Adapted.prefab`
+- `Adapted/PingPongNet_Adapted.prefab`
+- `Adapted/PingPongBall_Adapted.prefab`
+
+## Adapted prefab cleanup
+- Adapted prefabs keep MeshRenderer, MeshFilter, Material references, Collider, and Rigidbody where useful.
+- Old VRTableTennis gameplay/controller scripts are not attached.
+- Paddle uses the current project `PaddleFollower` and `PaddleVelocityTracker`.
+- Ball uses the current project `PingPongBall` and `BallLifetime`.
+- No Missing Script placeholders are intentionally present.
 
 ## What is not migrated yet
-- Original VRTableTennis meshes/textures/audio binaries are not included yet.
-- Legacy XR rig dependent scripts from external projects are intentionally excluded to preserve current PICO XR setup.
+- Full `.unity` scenes.
+- `Assets/Oculus` and other old XR integration folders from the reference project.
+- Network/multiplayer or Photon-related code.
+- Legacy scripts such as paddle controller, ball holding, or scene-specific gameplay managers from the reference project.
 
 ## Why not directly use full VRTableTennis scene
 - Current project already contains working PICO/XR setup and scene bootstrap.
@@ -22,7 +40,18 @@
 - This demo therefore composes objects into current scene via Editor tool, keeping existing XR Origin and Main Camera intact.
 
 ## Current PICO demo resource usage
-- Editor tool creates/updates reusable assets in:
+- `PingPongDemoSceneBuilder` now checks adapted VRTableTennis prefabs first:
+  - `Assets/_Project/External/VRTableTennis/Adapted/PingPongTable_Adapted.prefab`
+  - `Assets/_Project/External/VRTableTennis/Adapted/PingPongNet_Adapted.prefab`
+  - `Assets/_Project/External/VRTableTennis/Adapted/PingPongPaddle_Adapted.prefab`
+  - `Assets/_Project/External/VRTableTennis/Adapted/PingPongBall_Adapted.prefab`
+- If any adapted prefab is unavailable, the existing primitive fallback path remains active:
   - `Assets/_Project/Prefabs/PingPong`
   - `Assets/_Project/Materials/PingPong`
-- Scene instances are built from these assets, not from transient runtime-only objects.
+- Hit feedback binds `Original/Audio/single_bounce.mp3` when it is present.
+
+## Validation notes
+- No `ProjectSettings` files were intentionally changed.
+- No `.unity` scene file was edited directly.
+- Unity batch generation was attempted, but this local project reports a Unity editor version mismatch and package compile issues in sample XR files before the editor method can complete. The adapted prefabs were therefore created as explicit prefab assets using the imported asset GUIDs.
+- Open the project in the matching Unity editor and let it import once before using the build menu.
