@@ -84,9 +84,12 @@ public static class PingPongDemoSceneBuilder
         spawner.targetPoint = target.transform;
         spawner.ballContainer = ballContainer.transform;
         spawner.autoStartOnPlay = true;
-        spawner.serveSpeed = 2.7f;
-        spawner.minimumNetClearanceHeight = 1.3f;
+        spawner.serveSpeed = 3.0f;
+        spawner.minimumNetClearanceHeight = 1.18f;
         spawner.netWorldZ = 2f;
+        spawner.bounceOnTableBeforePlayer = true;
+        spawner.tableBounceWorldY = 0.8f;
+        spawner.tableBounceWorldZ = 1.45f;
         spawner.horizontalRandomRange = 0.12f;
         spawner.verticalRandomRange = 0.04f;
         ValidateBallSpawnerBindings(spawner);
@@ -635,9 +638,39 @@ public static class PingPongDemoSceneBuilder
         rb.useGravity = false;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
 
-        if (paddle.GetComponent<Collider>() == null) EnsureComponent<BoxCollider>(paddle);
+        var paddleCollider = EnsureComponent<BoxCollider>(paddle);
+        if (paddleCollider != null)
+        {
+            paddleCollider.center = Vector3.zero;
+            paddleCollider.size = LocalSizeForWorldSize(paddle.transform, new Vector3(0.48f, 0.14f, 0.38f));
+            paddleCollider.isTrigger = false;
+        }
+
+        var hitZone = GetOrCreate("PaddleHitZone", paddle.transform);
+        hitZone.transform.localPosition = Vector3.zero;
+        hitZone.transform.localRotation = Quaternion.identity;
+        hitZone.transform.localScale = Vector3.one;
+        var hitZoneCollider = EnsureComponent<BoxCollider>(hitZone);
+        if (hitZoneCollider != null)
+        {
+            hitZoneCollider.center = Vector3.zero;
+            hitZoneCollider.size = LocalSizeForWorldSize(hitZone.transform, new Vector3(0.65f, 0.28f, 0.5f));
+            hitZoneCollider.isTrigger = true;
+        }
+
         EnsureComponent<PaddleFollower>(paddle);
         EnsureComponent<PaddleVelocityTracker>(paddle);
+    }
+
+    private static Vector3 LocalSizeForWorldSize(Transform transform, Vector3 worldSize)
+    {
+        if (transform == null) return worldSize;
+
+        var scale = transform.lossyScale;
+        return new Vector3(
+            worldSize.x / Mathf.Max(Mathf.Abs(scale.x), 0.001f),
+            worldSize.y / Mathf.Max(Mathf.Abs(scale.y), 0.001f),
+            worldSize.z / Mathf.Max(Mathf.Abs(scale.z), 0.001f));
     }
 
     private static void SetupNet(GameObject net)

@@ -14,9 +14,13 @@ public class BallSpawner : MonoBehaviour
     public float upwardArc = 0.35f;
     public float minimumNetClearanceHeight = 1.25f;
     public float netWorldZ = 2.0f;
+    public bool bounceOnTableBeforePlayer = true;
+    public float tableBounceWorldY = 0.8f;
+    public float tableBounceWorldZ = 1.45f;
     public float horizontalRandomRange = 0.18f;
     public float verticalRandomRange = 0.08f;
 
+    private static PhysicMaterial _ballPhysicsMaterial;
     private Coroutine _serveRoutine;
 
     private void Start()
@@ -76,7 +80,13 @@ public class BallSpawner : MonoBehaviour
         target.x += Random.Range(-horizontalRandomRange, horizontalRandomRange);
         target.y += Random.Range(-verticalRandomRange, verticalRandomRange);
 
-        rb.velocity = CalculateServeVelocity(spawnPoint.position, target);
+        var trajectoryTarget = target;
+        if (bounceOnTableBeforePlayer)
+        {
+            trajectoryTarget = new Vector3(target.x, tableBounceWorldY, tableBounceWorldZ);
+        }
+
+        rb.velocity = CalculateServeVelocity(spawnPoint.position, trajectoryTarget);
         rb.angularVelocity = Vector3.zero;
 
         PingPongEvents.BallServed();
@@ -130,15 +140,34 @@ public class BallSpawner : MonoBehaviour
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        if (ballObj.GetComponent<Collider>() == null)
+        var collider = ballObj.GetComponent<SphereCollider>();
+        if (collider == null)
         {
-            var collider = ballObj.AddComponent<SphereCollider>();
-            collider.radius = 0.5f;
+            collider = ballObj.AddComponent<SphereCollider>();
         }
+
+        collider.radius = 0.5f;
+        collider.isTrigger = false;
+        collider.sharedMaterial = GetBallPhysicsMaterial();
 
         if (ballObj.GetComponent<PingPongBall>() == null) ballObj.AddComponent<PingPongBall>();
         if (ballObj.GetComponent<BallLifetime>() == null) ballObj.AddComponent<BallLifetime>();
 
         return rb;
+    }
+
+    private static PhysicMaterial GetBallPhysicsMaterial()
+    {
+        if (_ballPhysicsMaterial != null) return _ballPhysicsMaterial;
+
+        _ballPhysicsMaterial = new PhysicMaterial("PingPongBallPhysics")
+        {
+            bounciness = 0.72f,
+            dynamicFriction = 0.02f,
+            staticFriction = 0.02f,
+            bounceCombine = PhysicMaterialCombine.Maximum,
+            frictionCombine = PhysicMaterialCombine.Minimum
+        };
+        return _ballPhysicsMaterial;
     }
 }
