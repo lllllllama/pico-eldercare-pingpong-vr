@@ -15,7 +15,7 @@ public class PaddleVelocityTracker : MonoBehaviour
         MaxSpeed = 0f;
     }
 
-    private void Update()
+    private void LateUpdate()
     {
         var dt = Time.deltaTime;
         if (dt <= Mathf.Epsilon)

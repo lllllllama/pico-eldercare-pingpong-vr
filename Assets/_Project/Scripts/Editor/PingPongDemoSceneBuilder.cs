@@ -3,6 +3,7 @@ using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.XR;
 
 public static class PingPongDemoSceneBuilder
 {
@@ -66,7 +67,9 @@ public static class PingPongDemoSceneBuilder
 
         var table = InstantiateOrReuse("Table", tablePrefab, pingPong.transform, new Vector3(0f, 0.75f, 2f), GetInstanceScale(tablePrefab, new Vector3(2.4f, 0.08f, 1.4f)));
         var net = SetupOptionalNet(tablePrefab, pingPong.transform);
-        var paddle = InstantiateOrReuse("Paddle_Right", paddlePrefab, pingPong.transform, new Vector3(0.35f, 1.1f, 0.5f), GetInstanceScale(paddlePrefab, new Vector3(0.35f, 0.05f, 0.25f)));
+        var rightPaddle = InstantiateOrReuse("Paddle_Right", paddlePrefab, pingPong.transform, new Vector3(0.35f, 1.1f, 0.5f), GetInstanceScale(paddlePrefab, new Vector3(0.35f, 0.05f, 0.25f)));
+        RemoveGeneratedObject("Paddle_Left");
+        var leftHand = SetupLeftHandGrabVisual(pingPong.transform);
 
         var spawn = GetOrCreate("BallSpawnPoint", pingPong.transform);
         spawn.transform.position = new Vector3(0f, 1.25f, 3.05f);
@@ -74,7 +77,9 @@ public static class PingPongDemoSceneBuilder
         target.transform.position = new Vector3(0.2f, 1.15f, 0.7f);
         var ballContainer = GetOrCreate("BallContainer", pingPong.transform);
 
-        SetupPaddle(paddle);
+        SetupPaddle(rightPaddle);
+        SetupTablePhysics(table);
+        SetupPlayerTableBlocker(pingPong.transform);
 
         var spawnerObject = GetOrCreate("BallSpawner", managers.transform);
         var spawner = EnsureComponent<BallSpawner>(spawnerObject);
@@ -104,11 +109,15 @@ public static class PingPongDemoSceneBuilder
         SetupFeedbackAudio(feedback, feedbackManager);
 
         BuildUi(uiRoot.transform, scoreManager);
-        BindRightController(paddle.GetComponent<PaddleFollower>());
+        BindController(rightPaddle.GetComponent<PaddleFollower>(), true);
+        var leftController = BindController(leftHand.GetComponent<ControllerTransformFollower>(), false);
+        SetupControllerBallGrabber(managers.transform, leftController);
+        SetupInitialViewAligner(managers.transform);
 
         EditorUtility.SetDirty(table);
         if (net != null) EditorUtility.SetDirty(net);
-        EditorUtility.SetDirty(paddle);
+        EditorUtility.SetDirty(rightPaddle);
+        EditorUtility.SetDirty(leftHand);
         EditorUtility.SetDirty(spawnerObject);
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
@@ -277,14 +286,15 @@ public static class PingPongDemoSceneBuilder
         }
 
         var tableCollider = root.AddComponent<BoxCollider>();
-        tableCollider.size = new Vector3(2.4f, 0.08f, 1.4f);
+        tableCollider.size = new Vector3(2.35f, 0.08f, 1.35f);
         tableCollider.center = Vector3.zero;
 
         var netCollider = new GameObject("NetCollider");
         netCollider.transform.SetParent(root.transform, false);
         netCollider.transform.localPosition = new Vector3(0f, 0.16f, 0f);
         var box = netCollider.AddComponent<BoxCollider>();
-        box.size = new Vector3(2.4f, 0.25f, 0.03f);
+        box.size = new Vector3(2.2f, 0.18f, 0.01f);
+        box.isTrigger = true;
 
         SaveAdaptedPrefab(root, "PingPongTable");
     }
@@ -646,7 +656,7 @@ public static class PingPongDemoSceneBuilder
             paddleCollider.isTrigger = false;
         }
 
-        var hitZone = GetOrCreate("PaddleHitZone", paddle.transform);
+        var hitZone = GetOrCreateChild("PaddleHitZone", paddle.transform);
         hitZone.transform.localPosition = Vector3.zero;
         hitZone.transform.localRotation = Quaternion.identity;
         hitZone.transform.localScale = Vector3.one;
@@ -660,6 +670,134 @@ public static class PingPongDemoSceneBuilder
 
         EnsureComponent<PaddleFollower>(paddle);
         EnsureComponent<PaddleVelocityTracker>(paddle);
+    }
+
+    private static GameObject SetupLeftHandGrabVisual(Transform parent)
+    {
+        var hand = GetOrCreate("Left_GrabHand", parent);
+        hand.transform.position = new Vector3(-0.35f, 1.1f, 0.5f);
+        hand.transform.localScale = Vector3.one;
+
+        RemoveComponentIfExists<Rigidbody>(hand);
+        RemoveComponentIfExists<PaddleFollower>(hand);
+        RemoveComponentIfExists<PaddleVelocityTracker>(hand);
+
+        var collider = hand.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Object.DestroyImmediate(collider);
+        }
+
+        var oldVisual = hand.transform.Find("HandVisual");
+        if (oldVisual != null)
+        {
+            Object.DestroyImmediate(oldVisual.gameObject);
+        }
+
+        var handMaterial = CreateOrLoadMaterial("LeftHandSkin", new Color(0.95f, 0.72f, 0.55f));
+        ConfigureVisualPrimitive(hand.transform, "Palm", PrimitiveType.Sphere, Vector3.zero, Vector3.zero, new Vector3(0.09f, 0.06f, 0.12f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "Thumb", PrimitiveType.Capsule, new Vector3(-0.065f, -0.01f, 0.015f), new Vector3(35f, 0f, 55f), new Vector3(0.022f, 0.05f, 0.022f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "IndexFinger", PrimitiveType.Capsule, new Vector3(-0.045f, 0.005f, 0.09f), new Vector3(90f, 0f, 0f), new Vector3(0.018f, 0.065f, 0.018f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "MiddleFinger", PrimitiveType.Capsule, new Vector3(-0.015f, 0.008f, 0.1f), new Vector3(90f, 0f, 0f), new Vector3(0.019f, 0.075f, 0.019f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "RingFinger", PrimitiveType.Capsule, new Vector3(0.017f, 0.005f, 0.09f), new Vector3(90f, 0f, 0f), new Vector3(0.018f, 0.065f, 0.018f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "LittleFinger", PrimitiveType.Capsule, new Vector3(0.047f, 0f, 0.078f), new Vector3(90f, 0f, 0f), new Vector3(0.016f, 0.052f, 0.016f), handMaterial);
+
+        var follower = EnsureComponent<ControllerTransformFollower>(hand);
+        if (follower != null)
+        {
+            follower.positionOffset = Vector3.zero;
+            follower.rotationOffsetEuler = Vector3.zero;
+        }
+
+        EditorUtility.SetDirty(hand);
+        return hand;
+    }
+
+    private static void ConfigureVisualPrimitive(Transform parent, string name, PrimitiveType primitiveType, Vector3 localPosition, Vector3 localRotation, Vector3 localScale, Material material)
+    {
+        var visual = GetOrCreateChild(name, parent);
+        visual.transform.localPosition = localPosition;
+        visual.transform.localRotation = Quaternion.Euler(localRotation);
+        visual.transform.localScale = localScale;
+
+        var meshFilter = EnsureComponent<MeshFilter>(visual);
+        var meshRenderer = EnsureComponent<MeshRenderer>(visual);
+        var collider = visual.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Object.DestroyImmediate(collider);
+        }
+
+        if (meshFilter != null)
+        {
+            var primitive = GameObject.CreatePrimitive(primitiveType);
+            meshFilter.sharedMesh = primitive.GetComponent<MeshFilter>().sharedMesh;
+            Object.DestroyImmediate(primitive);
+        }
+
+        if (meshRenderer != null)
+        {
+            meshRenderer.sharedMaterial = material;
+        }
+    }
+
+    private static void SetupTablePhysics(GameObject table)
+    {
+        if (table == null) return;
+
+        var tableCollider = EnsureComponent<BoxCollider>(table);
+        if (tableCollider != null)
+        {
+            tableCollider.center = Vector3.zero;
+            tableCollider.size = LocalSizeForWorldSize(table.transform, new Vector3(2.35f, 0.08f, 1.35f));
+            tableCollider.isTrigger = false;
+        }
+
+        foreach (var collider in table.GetComponentsInChildren<BoxCollider>(true))
+        {
+            if (collider == tableCollider) continue;
+
+            var lowerName = collider.gameObject.name.ToLowerInvariant();
+            if (lowerName.Contains("net"))
+            {
+                collider.isTrigger = true;
+                collider.size = LocalSizeForWorldSize(collider.transform, new Vector3(2.2f, 0.18f, 0.01f));
+            }
+        }
+
+        EditorUtility.SetDirty(table);
+    }
+
+    private static void SetupPlayerTableBlocker(Transform parent)
+    {
+        var blocker = GetOrCreate("TablePlayerBlocker", parent);
+        blocker.transform.position = new Vector3(0f, 0.85f, 2f);
+        blocker.transform.localRotation = Quaternion.identity;
+        blocker.transform.localScale = Vector3.one;
+
+        var collider = EnsureComponent<BoxCollider>(blocker);
+        if (collider != null)
+        {
+            collider.center = Vector3.zero;
+            collider.size = new Vector3(2.6f, 1.4f, 1.55f);
+            collider.isTrigger = true;
+        }
+
+        var renderer = blocker.GetComponent<Renderer>();
+        if (renderer != null)
+        {
+            Object.DestroyImmediate(renderer);
+        }
+
+        var boundary = EnsureComponent<PlayerTableBoundary>(blocker);
+        if (boundary != null)
+        {
+            boundary.tableCenter = new Vector3(0f, 0.85f, 2f);
+            boundary.tableSize = new Vector2(2.6f, 1.55f);
+            boundary.margin = 0.12f;
+        }
+
+        EditorUtility.SetDirty(blocker);
     }
 
     private static Vector3 LocalSizeForWorldSize(Transform transform, Vector3 worldSize)
@@ -684,7 +822,8 @@ public static class PingPongDemoSceneBuilder
         if (collider != null)
         {
             collider.center = Vector3.zero;
-            collider.size = Vector3.one;
+            collider.size = LocalSizeForWorldSize(net.transform, new Vector3(2.2f, 0.18f, 0.01f));
+            collider.isTrigger = true;
         }
 
         EditorUtility.SetDirty(net);
@@ -742,21 +881,80 @@ public static class PingPongDemoSceneBuilder
         score.accuracyText = MakeText("AccuracyText", new Vector2(0f, -90f));
     }
 
-    private static void BindRightController(PaddleFollower follower)
+    private static Transform BindController(PaddleFollower follower, bool rightHand)
     {
-        if (follower == null) return;
+        if (follower == null) return null;
 
+        var controller = FindControllerTransform(rightHand);
+        if (controller != null)
+        {
+            follower.controllerTransform = controller;
+            return controller;
+        }
+
+        Debug.Log($"{(rightHand ? "Right" : "Left")} hand controller not auto-bound. Please assign XR Origin controller to PaddleFollower.controllerTransform manually.");
+        return null;
+    }
+
+    private static Transform BindController(ControllerTransformFollower follower, bool rightHand)
+    {
+        if (follower == null) return null;
+
+        var controller = FindControllerTransform(rightHand);
+        if (controller != null)
+        {
+            follower.controllerTransform = controller;
+            return controller;
+        }
+
+        Debug.Log($"{(rightHand ? "Right" : "Left")} hand controller not auto-bound. Please assign XR Origin controller to ControllerTransformFollower.controllerTransform manually.");
+        return null;
+    }
+
+    private static Transform FindControllerTransform(bool rightHand)
+    {
         foreach (var t in Object.FindObjectsOfType<Transform>())
         {
             var n = t.name.ToLowerInvariant();
-            if (n.Contains("righthand") || n.Contains("right controller") || n.Contains("rightcontroller") || n == "right")
+            if (rightHand && (n.Contains("righthand") || n.Contains("right controller") || n.Contains("rightcontroller") || n == "right"))
             {
-                follower.controllerTransform = t;
-                return;
+                return t;
+            }
+
+            if (!rightHand && (n.Contains("lefthand") || n.Contains("left controller") || n.Contains("leftcontroller") || n == "left"))
+            {
+                return t;
             }
         }
 
-        Debug.Log("Right hand controller not auto-bound. Please assign XR Origin right-hand controller to PaddleFollower.controllerTransform manually.");
+        return null;
+    }
+
+    private static void SetupControllerBallGrabber(Transform parent, Transform leftController)
+    {
+        var grabberObject = GetOrCreate("LeftBallGrabber", parent);
+        var grabber = EnsureComponent<ControllerBallGrabber>(grabberObject);
+        if (grabber == null) return;
+
+        grabber.controllerTransform = leftController;
+        grabber.controllerNode = XRNode.LeftHand;
+        grabber.grabRadius = 0.28f;
+        grabber.releaseSpeedMultiplier = 1.0f;
+        grabber.holdOffset = new Vector3(0f, 0f, 0.08f);
+        EditorUtility.SetDirty(grabberObject);
+    }
+
+    private static void SetupInitialViewAligner(Transform parent)
+    {
+        var alignerObject = GetOrCreate("InitialViewAligner", parent);
+        var aligner = EnsureComponent<VrInitialViewAligner>(alignerObject);
+        if (aligner == null) return;
+
+        aligner.desiredHeadWorldPosition = new Vector3(0f, 1.6f, 0.25f);
+        aligner.lookAtWorldPosition = new Vector3(0f, 1.1f, 2f);
+        aligner.alignOnStart = true;
+        aligner.alignPosition = true;
+        EditorUtility.SetDirty(alignerObject);
     }
 
     private static void EnsureFloor(Transform parent)
@@ -843,6 +1041,38 @@ public static class PingPongDemoSceneBuilder
         var go = GameObject.Find(name) ?? new GameObject(name);
         if (parent != null) go.transform.SetParent(parent);
         return go;
+    }
+
+    private static GameObject GetOrCreateChild(string name, Transform parent)
+    {
+        if (parent == null) return GameObject.Find(name) ?? new GameObject(name);
+
+        var child = parent.Find(name);
+        if (child != null) return child.gameObject;
+
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        return go;
+    }
+
+    private static void RemoveGeneratedObject(string name)
+    {
+        var go = GameObject.Find(name);
+        if (go != null)
+        {
+            Object.DestroyImmediate(go);
+        }
+    }
+
+    private static void RemoveComponentIfExists<T>(GameObject go) where T : Component
+    {
+        if (go == null) return;
+
+        var component = go.GetComponent<T>();
+        if (component != null)
+        {
+            Object.DestroyImmediate(component);
+        }
     }
 
     private static T EnsureComponent<T>(GameObject go) where T : Component

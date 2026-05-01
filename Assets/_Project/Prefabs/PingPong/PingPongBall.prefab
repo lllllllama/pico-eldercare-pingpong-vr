@@ -147,10 +147,10 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7499c392712d7084a94986fb9aacf148, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  paddleVelocityMultiplier: 0.6
-  forwardBoost: 1.8
+  paddleVelocityMultiplier: 0.85
+  forwardBoost: 2.2
   upwardBoost: 0.25
-  maxSpeed: 8
+  maxSpeed: 9
 --- !u!114 &4227231224635374114
 MonoBehaviour:
   m_ObjectHideFlags: 0
