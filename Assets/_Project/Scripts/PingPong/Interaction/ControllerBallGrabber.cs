@@ -8,30 +8,49 @@ public class ControllerBallGrabber : MonoBehaviour
     public XRNode controllerNode = XRNode.LeftHand;
     public float grabRadius = 0.28f;
     public float releaseSpeedMultiplier = 1.0f;
+    public float minimumReleaseSpeed = 0.35f;
+    public float grabScanInterval = 0.04f;
+    public LayerMask grabLayers = ~0;
     public Vector3 holdOffset = new Vector3(0f, 0f, 0.08f);
+    public GrabHandPoseAnimator handPoseAnimator;
 
+    private readonly Collider[] _grabCandidates = new Collider[24];
     private readonly List<InputDevice> _devices = new List<InputDevice>();
     private PingPongBall _grabbedBall;
     private Rigidbody _grabbedRigidbody;
     private Transform _originalParent;
     private Vector3 _lastPosition;
     private Vector3 _controllerVelocity;
+    private float _nextGrabScanTime;
+    private float _nextHandPoseSearchTime;
+    private bool _waitForGripReleaseBeforeGrab;
     private bool _wasGripPressed;
 
     private void OnEnable()
     {
         _lastPosition = GetControllerPosition();
         _controllerVelocity = Vector3.zero;
+        _nextGrabScanTime = 0f;
+        _nextHandPoseSearchTime = 0f;
+        _waitForGripReleaseBeforeGrab = false;
         _wasGripPressed = false;
+        TryBindHandPoseAnimator();
     }
 
     private void Update()
     {
         UpdateControllerVelocity();
+        TryBindHandPoseAnimator();
 
         var gripPressed = IsGripPressed();
-        if (gripPressed && _grabbedBall == null)
+        if (!gripPressed)
         {
+            _waitForGripReleaseBeforeGrab = false;
+        }
+
+        if (gripPressed && !_waitForGripReleaseBeforeGrab && _grabbedBall == null && Time.time >= _nextGrabScanTime)
+        {
+            _nextGrabScanTime = Time.time + grabScanInterval;
             TryGrabNearestBall();
         }
         else if (!gripPressed && _wasGripPressed)
@@ -58,8 +77,21 @@ public class ControllerBallGrabber : MonoBehaviour
 
         PingPongBall nearest = null;
         var nearestDistance = grabRadius;
-        foreach (var ball in FindObjectsOfType<PingPongBall>())
+        var count = Physics.OverlapSphereNonAlloc(
+            controllerTransform.position,
+            grabRadius,
+            _grabCandidates,
+            grabLayers,
+            QueryTriggerInteraction.Ignore);
+
+        for (var i = 0; i < count; i++)
         {
+            var candidate = _grabCandidates[i];
+            if (candidate == null) continue;
+
+            var ball = candidate.GetComponentInParent<PingPongBall>();
+            if (ball == null || ball.IsGrabbed) continue;
+
             var distance = Vector3.Distance(controllerTransform.position, ball.transform.position);
             if (distance <= nearestDistance)
             {
@@ -82,6 +114,7 @@ public class ControllerBallGrabber : MonoBehaviour
             _grabbedRigidbody.isKinematic = true;
         }
 
+        nearest.SetGrabber(this);
         nearest.transform.SetParent(controllerTransform, false);
         nearest.transform.localPosition = holdOffset;
         nearest.transform.localRotation = Quaternion.identity;
@@ -101,16 +134,42 @@ public class ControllerBallGrabber : MonoBehaviour
 
     private void ReleaseBall()
     {
+        var releaseVelocity = _controllerVelocity * releaseSpeedMultiplier;
+        if (releaseVelocity.sqrMagnitude < minimumReleaseSpeed * minimumReleaseSpeed)
+        {
+            releaseVelocity = GetControllerForward() * minimumReleaseSpeed;
+        }
+
+        ReleaseBall(releaseVelocity);
+    }
+
+    public bool ForceRelease(PingPongBall ball, Vector3 velocity)
+    {
+        if (_grabbedBall == null || _grabbedBall != ball) return false;
+
+        ReleaseBall(velocity);
+        _waitForGripReleaseBeforeGrab = true;
+        return true;
+    }
+
+    public bool IsHolding(PingPongBall ball)
+    {
+        return _grabbedBall != null && _grabbedBall == ball;
+    }
+
+    private void ReleaseBall(Vector3 releaseVelocity)
+    {
         if (_grabbedBall == null) return;
 
         var releasedBall = _grabbedBall;
         releasedBall.transform.SetParent(_originalParent, true);
+        releasedBall.SetGrabber(null);
 
         if (_grabbedRigidbody != null)
         {
             _grabbedRigidbody.isKinematic = false;
             _grabbedRigidbody.useGravity = true;
-            _grabbedRigidbody.velocity = _controllerVelocity * releaseSpeedMultiplier;
+            _grabbedRigidbody.velocity = releaseVelocity;
             _grabbedRigidbody.angularVelocity = Vector3.zero;
         }
 
@@ -132,6 +191,11 @@ public class ControllerBallGrabber : MonoBehaviour
         return controllerTransform != null ? controllerTransform.position : transform.position;
     }
 
+    private Vector3 GetControllerForward()
+    {
+        return controllerTransform != null ? controllerTransform.forward : transform.forward;
+    }
+
     private bool IsGripPressed()
     {
         InputDevices.GetDevicesAtXRNode(controllerNode, _devices);
@@ -149,5 +213,24 @@ public class ControllerBallGrabber : MonoBehaviour
         }
 
         return false;
+    }
+
+    private void TryBindHandPoseAnimator()
+    {
+        if (handPoseAnimator != null || Time.time < _nextHandPoseSearchTime) return;
+        _nextHandPoseSearchTime = Time.time + 0.5f;
+
+        var visualName = controllerNode == XRNode.LeftHand ? "Left_GrabHand" : "Right_GrabHand";
+        var visual = GameObject.Find(visualName);
+        if (visual == null) return;
+
+        handPoseAnimator = visual.GetComponent<GrabHandPoseAnimator>();
+        if (handPoseAnimator == null)
+        {
+            handPoseAnimator = visual.AddComponent<GrabHandPoseAnimator>();
+        }
+
+        handPoseAnimator.controllerNode = controllerNode;
+        handPoseAnimator.readControllerGrip = true;
     }
 }

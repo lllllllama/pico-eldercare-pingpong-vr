@@ -3,7 +3,7 @@ using UnityEngine;
 public class PlayerTableBoundary : MonoBehaviour
 {
     public Vector3 tableCenter = new Vector3(0f, 0.85f, 2f);
-    public Vector2 tableSize = new Vector2(2.6f, 1.55f);
+    public Vector2 tableSize = new Vector2(1.6f, 2.79f);
     public float margin = 0.12f;
 
     private Transform _rigRoot;
