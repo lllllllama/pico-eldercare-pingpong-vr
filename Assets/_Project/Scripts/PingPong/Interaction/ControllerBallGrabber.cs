@@ -235,5 +235,7 @@ public class ControllerBallGrabber : MonoBehaviour
 
         handPoseAnimator.controllerNode = controllerNode;
         handPoseAnimator.readControllerGrip = true;
+        handPoseAnimator.mirrorX = controllerNode == XRNode.LeftHand;
+        handPoseAnimator.RebuildPoseCache();
     }
 }

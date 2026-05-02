@@ -71,6 +71,8 @@ public static class PingPongDemoSceneBuilder
             return;
         }
 
+        RemoveGeneratedObject("Table");
+        RemoveGeneratedObject("Net");
         var table = InstantiateOrReuse("Table", tablePrefab, pingPong.transform, PingPongGeometry.TableCenter, GetInstanceScale(tablePrefab, TableColliderWorldSize));
         var net = SetupOptionalNet(tablePrefab, pingPong.transform);
         var rightPaddle = InstantiateOrReuse("Paddle_Right", paddlePrefab, pingPong.transform, new Vector3(0.35f, 1.1f, 0.5f), GetInstanceScale(paddlePrefab, PaddleColliderSize));
@@ -137,10 +139,20 @@ public static class PingPongDemoSceneBuilder
         if (!EnsureEditMode()) return;
 
         EnsureFolders();
+        TryCreateOrUpdateAdaptedPrefabs(false);
         var environment = GetOrCreate("Environment");
+        var pingPong = GetOrCreate("PingPong");
         EnsureFloor(environment.transform);
         EnsureLight(environment.transform);
         EnsureBackWall(environment.transform);
+        RemoveGeneratedObject("Paddle_Left");
+        SetupLeftHandGrabVisual(pingPong.transform);
+        var table = GameObject.Find("Table");
+        if (table != null)
+        {
+            SetupTablePhysics(table);
+        }
+        SetupPlayerTableBlocker(pingPong.transform);
         RemoveRootLevelGeneratedBallObjects();
         RepairExistingBallObjectsInScene();
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
@@ -275,20 +287,8 @@ public static class PingPongDemoSceneBuilder
 
     private static void CreateOrUpdateTablePrefab(Material tableMaterial, Material netMaterial, Material darkMaterial)
     {
-        var sourceModel = AssetDatabase.LoadAssetAtPath<GameObject>($"{OriginalModelRoot}/PingPondTable.fbx");
-        if (sourceModel == null) return;
-
         var root = new GameObject("PingPongTable_Adapted");
-        var visual = PrefabUtility.InstantiatePrefab(sourceModel) as GameObject;
-        if (visual != null)
-        {
-            visual.name = "Visual_PingPondTable";
-            visual.transform.SetParent(root.transform, false);
-            visual.transform.localPosition = Vector3.zero;
-            visual.transform.localRotation = Quaternion.Euler(-90f, 90f, 0f);
-            visual.transform.localScale = Vector3.one * 40f;
-            AssignMaterialsByName(visual, tableMaterial, netMaterial, darkMaterial);
-        }
+        BuildStandardTableVisual(root.transform, tableMaterial, netMaterial, darkMaterial);
 
         var tableCollider = root.AddComponent<BoxCollider>();
         tableCollider.size = TableColliderWorldSize;
@@ -306,11 +306,41 @@ public static class PingPongDemoSceneBuilder
         SaveAdaptedPrefab(root, "PingPongTable");
     }
 
+    private static void BuildStandardTableVisual(Transform root, Material tableMaterial, Material netMaterial, Material darkMaterial)
+    {
+        ConfigureVisualPrimitive(root, "TableTopVisual", PrimitiveType.Cube, Vector3.zero, Vector3.zero, TableColliderWorldSize, tableMaterial);
+        ConfigureVisualPrimitive(root, "NetVisual", PrimitiveType.Cube, PingPongGeometry.NetLocalCenter, Vector3.zero, NetColliderWorldSize, netMaterial);
+
+        var legHeight = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness;
+        var legCenterY = -PingPongGeometry.TableThickness * 0.5f - legHeight * 0.5f;
+        var legOffsetX = PingPongGeometry.TableWidth * 0.5f - 0.09f;
+        var legOffsetZ = PingPongGeometry.TableLength * 0.5f - 0.16f;
+        var legSize = new Vector3(0.045f, legHeight, 0.045f);
+
+        ConfigureVisualPrimitive(root, "LegFrontLeft", PrimitiveType.Cube, new Vector3(-legOffsetX, legCenterY, -legOffsetZ), Vector3.zero, legSize, darkMaterial);
+        ConfigureVisualPrimitive(root, "LegFrontRight", PrimitiveType.Cube, new Vector3(legOffsetX, legCenterY, -legOffsetZ), Vector3.zero, legSize, darkMaterial);
+        ConfigureVisualPrimitive(root, "LegBackLeft", PrimitiveType.Cube, new Vector3(-legOffsetX, legCenterY, legOffsetZ), Vector3.zero, legSize, darkMaterial);
+        ConfigureVisualPrimitive(root, "LegBackRight", PrimitiveType.Cube, new Vector3(legOffsetX, legCenterY, legOffsetZ), Vector3.zero, legSize, darkMaterial);
+
+        var postHeight = PingPongGeometry.NetHeight + 0.06f;
+        var postCenterY = PingPongGeometry.TableThickness * 0.5f + postHeight * 0.5f;
+        var postOffsetX = PingPongGeometry.TableWidth * 0.5f + 0.02f;
+        var postSize = new Vector3(0.025f, postHeight, 0.025f);
+
+        ConfigureVisualPrimitive(root, "NetPostLeft", PrimitiveType.Cube, new Vector3(-postOffsetX, postCenterY, 0f), Vector3.zero, postSize, darkMaterial);
+        ConfigureVisualPrimitive(root, "NetPostRight", PrimitiveType.Cube, new Vector3(postOffsetX, postCenterY, 0f), Vector3.zero, postSize, darkMaterial);
+    }
+
     private static void CreateOrUpdateNetPrefab(Material netMaterial)
     {
         var temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
         temp.name = "PingPongNet_Adapted";
         temp.transform.localScale = NetColliderWorldSize;
+        var collider = temp.GetComponent<BoxCollider>();
+        if (collider != null)
+        {
+            collider.isTrigger = true;
+        }
         ConfigureSurface(temp, PingPongSurfaceType.Net);
 
         var renderer = temp.GetComponent<Renderer>();
@@ -743,11 +773,11 @@ public static class PingPongDemoSceneBuilder
 
         var handMaterial = CreateOrLoadMaterial("LeftHandSkin", new Color(0.95f, 0.72f, 0.55f));
         ConfigureVisualPrimitive(hand.transform, "Palm", PrimitiveType.Sphere, Vector3.zero, Vector3.zero, new Vector3(0.09f, 0.06f, 0.12f), handMaterial);
-        ConfigureVisualPrimitive(hand.transform, "Thumb", PrimitiveType.Capsule, new Vector3(-0.065f, -0.01f, 0.015f), new Vector3(35f, 0f, 55f), new Vector3(0.022f, 0.05f, 0.022f), handMaterial);
-        ConfigureVisualPrimitive(hand.transform, "IndexFinger", PrimitiveType.Capsule, new Vector3(-0.045f, 0.005f, 0.09f), new Vector3(90f, 0f, 0f), new Vector3(0.018f, 0.065f, 0.018f), handMaterial);
-        ConfigureVisualPrimitive(hand.transform, "MiddleFinger", PrimitiveType.Capsule, new Vector3(-0.015f, 0.008f, 0.1f), new Vector3(90f, 0f, 0f), new Vector3(0.019f, 0.075f, 0.019f), handMaterial);
-        ConfigureVisualPrimitive(hand.transform, "RingFinger", PrimitiveType.Capsule, new Vector3(0.017f, 0.005f, 0.09f), new Vector3(90f, 0f, 0f), new Vector3(0.018f, 0.065f, 0.018f), handMaterial);
-        ConfigureVisualPrimitive(hand.transform, "LittleFinger", PrimitiveType.Capsule, new Vector3(0.047f, 0f, 0.078f), new Vector3(90f, 0f, 0f), new Vector3(0.016f, 0.052f, 0.016f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "Thumb", PrimitiveType.Capsule, new Vector3(0.065f, -0.01f, 0.015f), new Vector3(35f, 0f, -55f), new Vector3(0.022f, 0.05f, 0.022f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "IndexFinger", PrimitiveType.Capsule, new Vector3(0.045f, 0.005f, 0.09f), new Vector3(90f, 0f, 0f), new Vector3(0.018f, 0.065f, 0.018f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "MiddleFinger", PrimitiveType.Capsule, new Vector3(0.015f, 0.008f, 0.1f), new Vector3(90f, 0f, 0f), new Vector3(0.019f, 0.075f, 0.019f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "RingFinger", PrimitiveType.Capsule, new Vector3(-0.017f, 0.005f, 0.09f), new Vector3(90f, 0f, 0f), new Vector3(0.018f, 0.065f, 0.018f), handMaterial);
+        ConfigureVisualPrimitive(hand.transform, "LittleFinger", PrimitiveType.Capsule, new Vector3(-0.047f, 0f, 0.078f), new Vector3(90f, 0f, 0f), new Vector3(0.016f, 0.052f, 0.016f), handMaterial);
 
         var follower = EnsureComponent<ControllerTransformFollower>(hand);
         if (follower != null)
@@ -762,6 +792,8 @@ public static class PingPongDemoSceneBuilder
             poseAnimator.controllerNode = XRNode.LeftHand;
             poseAnimator.closedPoseSpeed = 12f;
             poseAnimator.readControllerGrip = true;
+            poseAnimator.mirrorX = true;
+            poseAnimator.RebuildPoseCache();
         }
 
         EditorUtility.SetDirty(hand);
@@ -800,6 +832,12 @@ public static class PingPongDemoSceneBuilder
     {
         if (table == null) return;
 
+        RemoveChildIfExists(table.transform, "Visual_PingPongTable");
+        var tableMaterial = CreateOrLoadMaterial("VRTableTennis_TableGreen", new Color(0.03f, 0.48f, 0.18f), AdaptedMaterialRoot);
+        var netMaterial = CreateOrLoadMaterial("VRTableTennis_NetWhite", new Color(0.9f, 0.9f, 0.86f), AdaptedMaterialRoot);
+        var darkMaterial = CreateOrLoadMaterial("VRTableTennis_DarkRubber", new Color(0.02f, 0.02f, 0.02f), AdaptedMaterialRoot);
+        BuildStandardTableVisual(table.transform, tableMaterial, netMaterial, darkMaterial);
+
         var tableCollider = EnsureComponent<BoxCollider>(table);
         if (tableCollider != null)
         {
@@ -808,6 +846,19 @@ public static class PingPongDemoSceneBuilder
             tableCollider.isTrigger = false;
         }
         ConfigureSurface(table, PingPongSurfaceType.Table);
+
+        var netColliderObject = GetOrCreateChild("NetCollider", table.transform);
+        netColliderObject.transform.localPosition = PingPongGeometry.NetLocalCenter;
+        netColliderObject.transform.localRotation = Quaternion.identity;
+        netColliderObject.transform.localScale = Vector3.one;
+        var netCollider = EnsureComponent<BoxCollider>(netColliderObject);
+        if (netCollider != null)
+        {
+            netCollider.center = Vector3.zero;
+            netCollider.size = LocalSizeForWorldSize(netColliderObject.transform, NetColliderWorldSize);
+            netCollider.isTrigger = true;
+        }
+        ConfigureSurface(netColliderObject, PingPongSurfaceType.Net);
 
         foreach (var collider in table.GetComponentsInChildren<BoxCollider>(true))
         {
@@ -1133,6 +1184,17 @@ public static class PingPongDemoSceneBuilder
         if (go != null)
         {
             Object.DestroyImmediate(go);
+        }
+    }
+
+    private static void RemoveChildIfExists(Transform parent, string childName)
+    {
+        if (parent == null) return;
+
+        var child = parent.Find(childName);
+        if (child != null)
+        {
+            Object.DestroyImmediate(child.gameObject);
         }
     }
 

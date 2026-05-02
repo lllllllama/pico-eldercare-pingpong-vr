@@ -10,10 +10,10 @@ GameObject:
   m_Component:
   - component: {fileID: 420000}
   - component: {fileID: 650020}
+  - component: {fileID: 114023}
   - component: {fileID: 540020}
   - component: {fileID: 114020}
   - component: {fileID: 114021}
-  - component: {fileID: 114023}
   m_Layer: 0
   m_Name: PingPongPaddle_Adapted
   m_TagString: Untagged
@@ -59,6 +59,23 @@ BoxCollider:
   serializedVersion: 3
   m_Size: {x: 0.2, y: 0.04, z: 0.32}
   m_Center: {x: 0, y: 0, z: 0.16}
+--- !u!114 &114023
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 120000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 226634b47ece4f4394e85040f6ffaa41, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  surfaceType: 3
+  normalRestitution: 0.72
+  tangentialFriction: 0.45
+  useSweptFallback: 1
+  useTypeDefaults: 1
 --- !u!54 &540020
 Rigidbody:
   m_ObjectHideFlags: 0
@@ -111,8 +128,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dfb34f5ce79ea7f469d42fc71376220e, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   autoAlignColliders: 1
   bodyColliderCenter: {x: 0, y: 0, z: 0.16}
   bodyColliderSize: {x: 0.2, y: 0.04, z: 0.32}
@@ -120,23 +137,6 @@ MonoBehaviour:
   hitZoneColliderSize: {x: 0.22, y: 0.06, z: 0.32}
   velocitySmoothing: 0.35
   angularVelocitySmoothing: 0.35
---- !u!114 &114023
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 120000}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 226634b47ece4f4394e85040f6ffaa41, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  surfaceType: 3
-  normalRestitution: 0.72
-  tangentialFriction: 0.45
-  useSweptFallback: 1
-  useTypeDefaults: 1
 --- !u!1 &120002
 GameObject:
   m_ObjectHideFlags: 0
@@ -201,8 +201,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 226634b47ece4f4394e85040f6ffaa41, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   surfaceType: 4
   normalRestitution: 0.78
   tangentialFriction: 0.58
