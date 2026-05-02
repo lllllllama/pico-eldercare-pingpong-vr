@@ -12,10 +12,10 @@ public class BallSpawner : MonoBehaviour
     public float serveInterval = 4.0f;
     public float serveSpeed = 2.6f;
     public float upwardArc = 0.35f;
-    public float minimumNetClearanceHeight = 1.25f;
-    public float netWorldZ = 2.0f;
+    public float minimumNetClearanceHeight = PingPongGeometry.TableTopHeight + PingPongGeometry.NetHeight + 0.08f;
+    public float netWorldZ = PingPongGeometry.TableCenter.z;
     public bool bounceOnTableBeforePlayer = true;
-    public float tableBounceWorldY = 0.8f;
+    public float tableBounceWorldY = PingPongGeometry.TableTopHeight + PingPongGeometry.BallRadius;
     public float tableBounceWorldZ = 1.45f;
     public float horizontalRandomRange = 0.18f;
     public float verticalRandomRange = 0.08f;
@@ -73,6 +73,7 @@ public class BallSpawner : MonoBehaviour
         if (ballPrefab == null || spawnPoint == null || targetPoint == null) return;
 
         var ballObj = Instantiate(ballPrefab, spawnPoint.position, Quaternion.identity, ballContainer);
+        ballObj.transform.localScale = PingPongGeometry.BallPrefabScale;
         var rb = ConfigureSpawnedBall(ballObj);
         if (rb == null) return;
 
@@ -133,9 +134,9 @@ public class BallSpawner : MonoBehaviour
 
         if (rb == null) return null;
 
-        rb.mass = 0.0027f;
-        rb.drag = 0.03f;
-        rb.angularDrag = 0.05f;
+        rb.mass = PingPongGeometry.BallMass;
+        rb.drag = PingPongGeometry.BallDrag;
+        rb.angularDrag = PingPongGeometry.BallAngularDrag;
         rb.useGravity = true;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
@@ -146,6 +147,7 @@ public class BallSpawner : MonoBehaviour
             collider = ballObj.AddComponent<SphereCollider>();
         }
 
+        ballObj.transform.localScale = PingPongGeometry.BallPrefabScale;
         collider.radius = 0.5f;
         collider.isTrigger = false;
         collider.sharedMaterial = GetBallPhysicsMaterial();

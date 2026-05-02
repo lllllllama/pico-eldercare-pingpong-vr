@@ -15,12 +15,12 @@ public static class PingPongDemoSceneBuilder
     private const string OriginalAudioRoot = OriginalRoot + "/Audio";
     private const string AdaptedRoot = ExternalRoot + "/Adapted";
     private const string AdaptedMaterialRoot = AdaptedRoot + "/Materials";
-    private static readonly Vector3 TableColliderWorldSize = new Vector3(1.36f, 0.08f, 2.59f);
-    private static readonly Vector3 NetColliderWorldSize = new Vector3(1.32f, 0.18f, 0.01f);
-    private static readonly Vector3 PaddleColliderCenter = new Vector3(0f, 0f, 0.16f);
-    private static readonly Vector3 PaddleColliderSize = new Vector3(0.2f, 0.04f, 0.32f);
-    private static readonly Vector3 PaddleHitZoneCenter = new Vector3(0f, 0f, 0.16f);
-    private static readonly Vector3 PaddleHitZoneSize = new Vector3(0.22f, 0.06f, 0.32f);
+    private static readonly Vector3 TableColliderWorldSize = PingPongGeometry.TableColliderWorldSize;
+    private static readonly Vector3 NetColliderWorldSize = PingPongGeometry.NetColliderWorldSize;
+    private static readonly Vector3 PaddleColliderCenter = PingPongGeometry.PaddleColliderCenter;
+    private static readonly Vector3 PaddleColliderSize = PingPongGeometry.PaddleColliderSize;
+    private static readonly Vector3 PaddleHitZoneCenter = PingPongGeometry.PaddleHitZoneCenter;
+    private static readonly Vector3 PaddleHitZoneSize = PingPongGeometry.PaddleHitZoneSize;
 
     [MenuItem("Tools/PICO ElderCare/Build VRTableTennis Adapted Assets")]
     public static void BuildVrTableTennisAdaptedAssets()
@@ -63,7 +63,7 @@ public static class PingPongDemoSceneBuilder
         var tablePrefab = LoadAdaptedPrefab("PingPongTable") ??
                           LoadOrCreatePrefabAsset("PingPongTable", PrimitiveType.Cube, TableColliderWorldSize, CreateOrLoadMaterial("TableBlue", new Color(0.07f, 0.3f, 0.47f)));
         var paddlePrefab = LoadAdaptedPrefab("PingPongPaddle") ??
-                           LoadOrCreatePrefabAsset("PingPongPaddle", PrimitiveType.Cube, new Vector3(0.35f, 0.05f, 0.25f), CreateOrLoadMaterial("PaddleRed", new Color(0.66f, 0.11f, 0.11f)));
+                           LoadOrCreatePrefabAsset("PingPongPaddle", PrimitiveType.Cube, PaddleColliderSize, CreateOrLoadMaterial("PaddleRed", new Color(0.66f, 0.11f, 0.11f)));
         var ballPrefab = CreateOrUpdateBallPrefab();
         if (ballPrefab == null)
         {
@@ -71,9 +71,9 @@ public static class PingPongDemoSceneBuilder
             return;
         }
 
-        var table = InstantiateOrReuse("Table", tablePrefab, pingPong.transform, new Vector3(0f, 0.75f, 2f), GetInstanceScale(tablePrefab, TableColliderWorldSize));
+        var table = InstantiateOrReuse("Table", tablePrefab, pingPong.transform, PingPongGeometry.TableCenter, GetInstanceScale(tablePrefab, TableColliderWorldSize));
         var net = SetupOptionalNet(tablePrefab, pingPong.transform);
-        var rightPaddle = InstantiateOrReuse("Paddle_Right", paddlePrefab, pingPong.transform, new Vector3(0.35f, 1.1f, 0.5f), GetInstanceScale(paddlePrefab, new Vector3(0.35f, 0.05f, 0.25f)));
+        var rightPaddle = InstantiateOrReuse("Paddle_Right", paddlePrefab, pingPong.transform, new Vector3(0.35f, 1.1f, 0.5f), GetInstanceScale(paddlePrefab, PaddleColliderSize));
         RemoveGeneratedObject("Paddle_Left");
         var leftHand = SetupLeftHandGrabVisual(pingPong.transform);
 
@@ -96,10 +96,10 @@ public static class PingPongDemoSceneBuilder
         spawner.ballContainer = ballContainer.transform;
         spawner.autoStartOnPlay = true;
         spawner.serveSpeed = 3.0f;
-        spawner.minimumNetClearanceHeight = 1.18f;
-        spawner.netWorldZ = 2f;
+        spawner.minimumNetClearanceHeight = PingPongGeometry.TableTopHeight + PingPongGeometry.NetHeight + 0.08f;
+        spawner.netWorldZ = PingPongGeometry.TableCenter.z;
         spawner.bounceOnTableBeforePlayer = true;
-        spawner.tableBounceWorldY = 0.8f;
+        spawner.tableBounceWorldY = PingPongGeometry.TableTopHeight + PingPongGeometry.BallRadius;
         spawner.tableBounceWorldZ = 1.45f;
         spawner.horizontalRandomRange = 0.12f;
         spawner.verticalRandomRange = 0.04f;
@@ -218,7 +218,6 @@ public static class PingPongDemoSceneBuilder
 
     private static Vector3 GetInstanceScale(GameObject prefab, Vector3 fallbackScale)
     {
-        var path = AssetDatabase.GetAssetPath(prefab);
         return IsAdaptedPrefab(prefab)
             ? Vector3.one
             : fallbackScale;
@@ -294,13 +293,15 @@ public static class PingPongDemoSceneBuilder
         var tableCollider = root.AddComponent<BoxCollider>();
         tableCollider.size = TableColliderWorldSize;
         tableCollider.center = Vector3.zero;
+        ConfigureSurface(root, PingPongSurfaceType.Table);
 
         var netCollider = new GameObject("NetCollider");
         netCollider.transform.SetParent(root.transform, false);
-        netCollider.transform.localPosition = new Vector3(0f, 0.16f, 0f);
+        netCollider.transform.localPosition = PingPongGeometry.NetLocalCenter;
         var box = netCollider.AddComponent<BoxCollider>();
         box.size = NetColliderWorldSize;
         box.isTrigger = true;
+        ConfigureSurface(netCollider, PingPongSurfaceType.Net);
 
         SaveAdaptedPrefab(root, "PingPongTable");
     }
@@ -309,7 +310,8 @@ public static class PingPongDemoSceneBuilder
     {
         var temp = GameObject.CreatePrimitive(PrimitiveType.Cube);
         temp.name = "PingPongNet_Adapted";
-        temp.transform.localScale = new Vector3(TableColliderWorldSize.x, 0.25f, 0.03f);
+        temp.transform.localScale = NetColliderWorldSize;
+        ConfigureSurface(temp, PingPongSurfaceType.Net);
 
         var renderer = temp.GetComponent<Renderer>();
         if (renderer != null) renderer.sharedMaterial = netMaterial;
@@ -337,11 +339,20 @@ public static class PingPongDemoSceneBuilder
         var collider = root.AddComponent<BoxCollider>();
         collider.center = PaddleColliderCenter;
         collider.size = PaddleColliderSize;
+        ConfigureSurface(root, PingPongSurfaceType.PaddleBody);
 
         var rb = root.AddComponent<Rigidbody>();
         rb.isKinematic = true;
         rb.useGravity = false;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+
+        var hitZone = new GameObject("PaddleHitZone");
+        hitZone.transform.SetParent(root.transform, false);
+        var hitZoneCollider = hitZone.AddComponent<BoxCollider>();
+        hitZoneCollider.center = PaddleHitZoneCenter;
+        hitZoneCollider.size = PaddleHitZoneSize;
+        hitZoneCollider.isTrigger = true;
+        ConfigureSurface(hitZone, PingPongSurfaceType.PaddleHitZone);
 
         root.AddComponent<PaddleFollower>();
         ConfigurePaddleTracker(root.AddComponent<PaddleVelocityTracker>());
@@ -357,7 +368,7 @@ public static class PingPongDemoSceneBuilder
         {
             temp = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             temp.name = "PingPongBall_Adapted";
-            temp.transform.localScale = new Vector3(0.04f, 0.04f, 0.04f);
+            temp.transform.localScale = PingPongGeometry.BallPrefabScale;
 
             var renderer = temp.GetComponent<Renderer>();
             if (renderer != null) renderer.sharedMaterial = ballMaterial;
@@ -497,7 +508,7 @@ public static class PingPongDemoSceneBuilder
             temp = GameObject.CreatePrimitive(PrimitiveType.Sphere);
 
             temp.name = "PingPongBall";
-            temp.transform.localScale = new Vector3(0.04f, 0.04f, 0.04f);
+            temp.transform.localScale = PingPongGeometry.BallPrefabScale;
 
             var renderer = temp.GetComponent<Renderer>();
             if (renderer != null) renderer.sharedMaterial = ballMaterial;
@@ -535,14 +546,21 @@ public static class PingPongDemoSceneBuilder
         var rb = EnsureComponent<Rigidbody>(ball);
         if (rb == null) return;
 
-        rb.mass = 0.0027f;
-        rb.drag = 0.03f;
-        rb.angularDrag = 0.05f;
+        ball.transform.localScale = PingPongGeometry.BallPrefabScale;
+        rb.mass = PingPongGeometry.BallMass;
+        rb.drag = PingPongGeometry.BallDrag;
+        rb.angularDrag = PingPongGeometry.BallAngularDrag;
         rb.useGravity = true;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
-        if (ball.GetComponent<Collider>() == null) EnsureComponent<SphereCollider>(ball);
+        var collider = EnsureComponent<SphereCollider>(ball);
+        if (collider != null)
+        {
+            collider.radius = 0.5f;
+            collider.isTrigger = false;
+        }
+
         EnsureComponent<PingPongBall>(ball);
         EnsureComponent<BallLifetime>(ball);
     }
@@ -661,6 +679,7 @@ public static class PingPongDemoSceneBuilder
             paddleCollider.size = PaddleColliderSize;
             paddleCollider.isTrigger = false;
         }
+        ConfigureSurface(paddle, PingPongSurfaceType.PaddleBody);
 
         var hitZone = GetOrCreateChild("PaddleHitZone", paddle.transform);
         hitZone.transform.localPosition = Vector3.zero;
@@ -673,6 +692,7 @@ public static class PingPongDemoSceneBuilder
             hitZoneCollider.size = PaddleHitZoneSize;
             hitZoneCollider.isTrigger = true;
         }
+        ConfigureSurface(hitZone, PingPongSurfaceType.PaddleHitZone);
 
         EnsureComponent<PaddleFollower>(paddle);
         ConfigurePaddleTracker(EnsureComponent<PaddleVelocityTracker>(paddle));
@@ -687,6 +707,16 @@ public static class PingPongDemoSceneBuilder
         tracker.bodyColliderSize = PaddleColliderSize;
         tracker.hitZoneColliderCenter = PaddleHitZoneCenter;
         tracker.hitZoneColliderSize = PaddleHitZoneSize;
+    }
+
+    private static void ConfigureSurface(GameObject target, PingPongSurfaceType surfaceType)
+    {
+        var surface = EnsureComponent<PingPongSurface>(target);
+        if (surface == null) return;
+
+        surface.useTypeDefaults = true;
+        surface.Configure(surfaceType);
+        EditorUtility.SetDirty(target);
     }
 
     private static GameObject SetupLeftHandGrabVisual(Transform parent)
@@ -777,6 +807,7 @@ public static class PingPongDemoSceneBuilder
             tableCollider.size = LocalSizeForWorldSize(table.transform, TableColliderWorldSize);
             tableCollider.isTrigger = false;
         }
+        ConfigureSurface(table, PingPongSurfaceType.Table);
 
         foreach (var collider in table.GetComponentsInChildren<BoxCollider>(true))
         {
@@ -787,6 +818,7 @@ public static class PingPongDemoSceneBuilder
             {
                 collider.isTrigger = true;
                 collider.size = LocalSizeForWorldSize(collider.transform, NetColliderWorldSize);
+                ConfigureSurface(collider.gameObject, PingPongSurfaceType.Net);
             }
         }
 
@@ -796,7 +828,7 @@ public static class PingPongDemoSceneBuilder
     private static void SetupPlayerTableBlocker(Transform parent)
     {
         var blocker = GetOrCreate("TablePlayerBlocker", parent);
-        blocker.transform.position = new Vector3(0f, 0.85f, 2f);
+        blocker.transform.position = PingPongGeometry.TableCenter + Vector3.up * 0.1f;
         blocker.transform.localRotation = Quaternion.identity;
         blocker.transform.localScale = Vector3.one;
 
@@ -804,7 +836,7 @@ public static class PingPongDemoSceneBuilder
         if (collider != null)
         {
             collider.center = Vector3.zero;
-            collider.size = new Vector3(TableColliderWorldSize.x + 0.24f, 1.4f, TableColliderWorldSize.z + 0.2f);
+            collider.size = new Vector3(TableColliderWorldSize.x + 0.24f, 1.4f, TableColliderWorldSize.z + 0.24f);
             collider.isTrigger = true;
         }
 
@@ -817,9 +849,16 @@ public static class PingPongDemoSceneBuilder
         var boundary = EnsureComponent<PlayerTableBoundary>(blocker);
         if (boundary != null)
         {
-            boundary.tableCenter = new Vector3(0f, 0.85f, 2f);
-            boundary.tableSize = new Vector2(TableColliderWorldSize.x + 0.24f, TableColliderWorldSize.z + 0.2f);
+            boundary.tableCenter = PingPongGeometry.TableCenter;
+            boundary.tableSize = PingPongGeometry.TableBlockerSize(0.24f);
             boundary.margin = 0.12f;
+        }
+
+        var surface = EnsureComponent<PingPongSurface>(blocker);
+        if (surface != null)
+        {
+            surface.useTypeDefaults = true;
+            surface.Configure(PingPongSurfaceType.Unknown);
         }
 
         EditorUtility.SetDirty(blocker);
@@ -840,8 +879,8 @@ public static class PingPongDemoSceneBuilder
     {
         if (net == null) return;
 
-        net.transform.position = new Vector3(0f, 0.95f, 2f);
-        net.transform.localScale = new Vector3(TableColliderWorldSize.x, 0.25f, 0.03f);
+        net.transform.position = PingPongGeometry.TableCenter + PingPongGeometry.NetLocalCenter;
+        net.transform.localScale = NetColliderWorldSize;
 
         var collider = EnsureComponent<BoxCollider>(net);
         if (collider != null)
@@ -850,6 +889,7 @@ public static class PingPongDemoSceneBuilder
             collider.size = LocalSizeForWorldSize(net.transform, NetColliderWorldSize);
             collider.isTrigger = true;
         }
+        ConfigureSurface(net, PingPongSurfaceType.Net);
 
         EditorUtility.SetDirty(net);
     }
@@ -870,8 +910,8 @@ public static class PingPongDemoSceneBuilder
         }
 
         var netPrefab = LoadAdaptedPrefab("PingPongNet") ??
-                        LoadOrCreatePrefabAsset("PingPongNet", PrimitiveType.Cube, new Vector3(TableColliderWorldSize.x, 0.25f, 0.03f), CreateOrLoadMaterial("NetWhite", new Color(0.88f, 0.88f, 0.88f)));
-        var net = InstantiateOrReuse("Net", netPrefab, parent, new Vector3(0f, 0.95f, 2f), GetInstanceScale(netPrefab, new Vector3(TableColliderWorldSize.x, 0.25f, 0.03f)));
+                        LoadOrCreatePrefabAsset("PingPongNet", PrimitiveType.Cube, NetColliderWorldSize, CreateOrLoadMaterial("NetWhite", new Color(0.88f, 0.88f, 0.88f)));
+        var net = InstantiateOrReuse("Net", netPrefab, parent, PingPongGeometry.TableCenter + PingPongGeometry.NetLocalCenter, GetInstanceScale(netPrefab, NetColliderWorldSize));
         SetupNet(net);
         return net;
     }
@@ -888,22 +928,23 @@ public static class PingPongDemoSceneBuilder
         EnsureComponent<CanvasScaler>(canvasGo);
         EnsureComponent<GraphicRaycaster>(canvasGo);
 
-        TMP_Text MakeText(string name, Vector2 pos)
-        {
-            var go = GetOrCreate(name, canvasGo.transform);
-            var text = EnsureComponent<TextMeshProUGUI>(go);
-            if (text == null) return null;
-            var rect = go.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(450f, 100f);
-            rect.anchoredPosition = pos;
-            text.fontSize = 64;
-            text.color = Color.white;
-            return text;
-        }
+        score.hitText = CreateScoreText(canvasGo.transform, "HitText", new Vector2(0f, 90f));
+        score.servedText = CreateScoreText(canvasGo.transform, "ServedText", new Vector2(0f, 0f));
+        score.accuracyText = CreateScoreText(canvasGo.transform, "AccuracyText", new Vector2(0f, -90f));
+    }
 
-        score.hitText = MakeText("HitText", new Vector2(0f, 90f));
-        score.servedText = MakeText("ServedText", new Vector2(0f, 0f));
-        score.accuracyText = MakeText("AccuracyText", new Vector2(0f, -90f));
+    private static TMP_Text CreateScoreText(Transform canvasTransform, string name, Vector2 position)
+    {
+        var go = GetOrCreate(name, canvasTransform);
+        var text = EnsureComponent<TextMeshProUGUI>(go);
+        if (text == null) return null;
+
+        var rect = go.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(450f, 100f);
+        rect.anchoredPosition = position;
+        text.fontSize = 64;
+        text.color = Color.white;
+        return text;
     }
 
     private static Transform BindController(PaddleFollower follower, bool rightHand)
@@ -979,7 +1020,7 @@ public static class PingPongDemoSceneBuilder
         if (aligner == null) return;
 
         aligner.desiredHeadWorldPosition = new Vector3(0f, 1.6f, 0.25f);
-        aligner.lookAtWorldPosition = new Vector3(0f, 1.1f, 2f);
+        aligner.lookAtWorldPosition = new Vector3(0f, PingPongGeometry.TableTopHeight + 0.35f, PingPongGeometry.TableCenter.z);
         aligner.alignOnStart = true;
         aligner.alignPosition = true;
         EditorUtility.SetDirty(alignerObject);
@@ -994,6 +1035,7 @@ public static class PingPongDemoSceneBuilder
             namedFloor.transform.position = Vector3.zero;
             namedFloor.transform.localScale = Vector3.one * 3f;
             if (namedFloor.GetComponent<Collider>() == null) namedFloor.AddComponent<MeshCollider>();
+            ConfigureSurface(namedFloor, PingPongSurfaceType.Floor);
             EditorUtility.SetDirty(namedFloor);
             return;
         }
@@ -1004,6 +1046,7 @@ public static class PingPongDemoSceneBuilder
             if (n.Contains("floor") || n.Contains("ground") || n.Contains("plane"))
             {
                 collider.transform.SetParent(parent);
+                ConfigureSurface(collider.gameObject, PingPongSurfaceType.Floor);
                 EditorUtility.SetDirty(collider.gameObject);
                 return;
             }
@@ -1014,6 +1057,7 @@ public static class PingPongDemoSceneBuilder
         floor.transform.SetParent(parent);
         floor.transform.position = Vector3.zero;
         floor.transform.localScale = Vector3.one * 3f;
+        ConfigureSurface(floor, PingPongSurfaceType.Floor);
         EditorUtility.SetDirty(floor);
     }
 

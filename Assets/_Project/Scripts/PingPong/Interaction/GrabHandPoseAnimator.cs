@@ -23,13 +23,14 @@ public class GrabHandPoseAnimator : MonoBehaviour
     private readonly Quaternion[] _openRotations = new Quaternion[FingerNames.Length];
     private readonly Vector3[] _closedPositions = new Vector3[FingerNames.Length];
     private readonly Quaternion[] _closedRotations = new Quaternion[FingerNames.Length];
+    private readonly bool[] _fingerPoseCached = new bool[FingerNames.Length];
 
     private float _gripBlend;
-    private bool _poseCached;
+    private bool _allFingersFound;
 
     private void OnEnable()
     {
-        CachePose();
+        RefreshFingerBindings();
         ApplyPose(0f);
     }
 
@@ -41,9 +42,9 @@ public class GrabHandPoseAnimator : MonoBehaviour
 
     private void Update()
     {
-        if (!_poseCached)
+        if (!_allFingersFound)
         {
-            CachePose();
+            RefreshFingerBindings();
         }
 
         var target = readControllerGrip ? ReadGripValue() : 0f;
@@ -51,24 +52,27 @@ public class GrabHandPoseAnimator : MonoBehaviour
         ApplyPose(_gripBlend);
     }
 
-    private void CachePose()
+    private void RefreshFingerBindings()
     {
-        _poseCached = true;
+        _allFingersFound = true;
 
         for (var i = 0; i < FingerNames.Length; i++)
         {
-            var finger = transform.Find(FingerNames[i]);
+            var finger = _fingers[i] != null ? _fingers[i] : transform.Find(FingerNames[i]);
             _fingers[i] = finger;
 
             if (finger == null)
             {
-                _poseCached = false;
+                _allFingersFound = false;
                 continue;
             }
+
+            if (_fingerPoseCached[i]) continue;
 
             _openPositions[i] = finger.localPosition;
             _openRotations[i] = finger.localRotation;
             BuildClosedPose(FingerNames[i], _openPositions[i], _openRotations[i], out _closedPositions[i], out _closedRotations[i]);
+            _fingerPoseCached[i] = true;
         }
     }
 
@@ -91,11 +95,18 @@ public class GrabHandPoseAnimator : MonoBehaviour
         for (var i = 0; i < _fingers.Length; i++)
         {
             var finger = _fingers[i];
-            if (finger == null) continue;
+            if (finger == null || !_fingerPoseCached[i]) continue;
 
-            finger.localPosition = Vector3.Lerp(_openPositions[i], _closedPositions[i], blend);
-            finger.localRotation = Quaternion.Slerp(_openRotations[i], _closedRotations[i], blend);
+            var fingerBlend = FingerBlend(i, blend);
+            finger.localPosition = Vector3.Lerp(_openPositions[i], _closedPositions[i], fingerBlend);
+            finger.localRotation = Quaternion.Slerp(_openRotations[i], _closedRotations[i], fingerBlend);
         }
+    }
+
+    private static float FingerBlend(int fingerIndex, float blend)
+    {
+        var delay = fingerIndex == 0 ? 0f : 0.035f * fingerIndex;
+        return Mathf.Clamp01((blend - delay) / Mathf.Max(1f - delay, 0.01f));
     }
 
     private float ReadGripValue()

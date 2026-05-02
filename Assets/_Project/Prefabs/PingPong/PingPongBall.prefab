@@ -150,7 +150,17 @@ MonoBehaviour:
   paddleVelocityMultiplier: 0.85
   forwardBoost: 2.2
   upwardBoost: 0.25
+  minimumPaddleHitSpeed: 2.6
+  heldBallHitSpeed: 3.2
+  paddleHitCooldown: 0.12
+  surfaceHitCooldown: 0.08
+  minimumClosingSpeed: 0.15
+  heldBallMinimumSwingSpeed: 0.35
   maxSpeed: 9
+  enableSweptSurfaceFallback: 1
+  sweptSurfaceLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
 --- !u!114 &4227231224635374114
 MonoBehaviour:
   m_ObjectHideFlags: 0

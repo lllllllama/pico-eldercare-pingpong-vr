@@ -10,11 +10,13 @@ public class ControllerBallGrabber : MonoBehaviour
     public float releaseSpeedMultiplier = 1.0f;
     public float minimumReleaseSpeed = 0.35f;
     public float grabScanInterval = 0.04f;
+    public float normalReleaseRegrabCooldown = 0.08f;
+    public float forcedReleaseRegrabCooldown = 0.28f;
     public LayerMask grabLayers = ~0;
     public Vector3 holdOffset = new Vector3(0f, 0f, 0.08f);
     public GrabHandPoseAnimator handPoseAnimator;
 
-    private readonly Collider[] _grabCandidates = new Collider[24];
+    private readonly Collider[] _grabCandidates = new Collider[64];
     private readonly List<InputDevice> _devices = new List<InputDevice>();
     private PingPongBall _grabbedBall;
     private Rigidbody _grabbedRigidbody;
@@ -90,7 +92,7 @@ public class ControllerBallGrabber : MonoBehaviour
             if (candidate == null) continue;
 
             var ball = candidate.GetComponentInParent<PingPongBall>();
-            if (ball == null || ball.IsGrabbed) continue;
+            if (ball == null || ball.IsGrabbed || !ball.CanBeGrabbed) continue;
 
             var distance = Vector3.Distance(controllerTransform.position, ball.transform.position);
             if (distance <= nearestDistance)
@@ -140,14 +142,14 @@ public class ControllerBallGrabber : MonoBehaviour
             releaseVelocity = GetControllerForward() * minimumReleaseSpeed;
         }
 
-        ReleaseBall(releaseVelocity);
+        ReleaseBall(releaseVelocity, false);
     }
 
     public bool ForceRelease(PingPongBall ball, Vector3 velocity)
     {
         if (_grabbedBall == null || _grabbedBall != ball) return false;
 
-        ReleaseBall(velocity);
+        ReleaseBall(velocity, true);
         _waitForGripReleaseBeforeGrab = true;
         return true;
     }
@@ -157,13 +159,14 @@ public class ControllerBallGrabber : MonoBehaviour
         return _grabbedBall != null && _grabbedBall == ball;
     }
 
-    private void ReleaseBall(Vector3 releaseVelocity)
+    private void ReleaseBall(Vector3 releaseVelocity, bool forcedByPaddle)
     {
         if (_grabbedBall == null) return;
 
         var releasedBall = _grabbedBall;
         releasedBall.transform.SetParent(_originalParent, true);
         releasedBall.SetGrabber(null);
+        releasedBall.IgnoreGrabFor(forcedByPaddle ? forcedReleaseRegrabCooldown : normalReleaseRegrabCooldown);
 
         if (_grabbedRigidbody != null)
         {
