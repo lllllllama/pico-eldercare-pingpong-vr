@@ -87,7 +87,9 @@ public static class PingPongDemoSceneBuilder
 
         SetupPaddle(rightPaddle);
         SetupTablePhysics(table);
-        SetupPlayerTableBlocker(pingPong.transform);
+        var tableBlocker = SetupPlayerTableBlocker(pingPong.transform, table.transform);
+        SetupControllerTableLimiter(rightPaddle, table.transform);
+        SetupControllerTableLimiter(leftHand, table.transform);
 
         var spawnerObject = GetOrCreate("BallSpawner", managers.transform);
         var spawner = EnsureComponent<BallSpawner>(spawnerObject);
@@ -119,7 +121,8 @@ public static class PingPongDemoSceneBuilder
         BuildUi(uiRoot.transform, scoreManager);
         BindController(rightPaddle.GetComponent<PaddleFollower>(), true);
         var leftController = BindController(leftHand.GetComponent<ControllerTransformFollower>(), false);
-        SetupControllerBallGrabber(managers.transform, leftController);
+        var leftBallGrabber = SetupControllerBallGrabber(managers.transform, leftController);
+        SetupTableDragHandle(pingPong.transform, table, leftController, leftBallGrabber, spawner, spawn.transform, target.transform, tableBlocker != null ? tableBlocker.transform : null);
         SetupInitialViewAligner(managers.transform);
 
         EditorUtility.SetDirty(table);
@@ -146,13 +149,31 @@ public static class PingPongDemoSceneBuilder
         EnsureLight(environment.transform);
         EnsureBackWall(environment.transform);
         RemoveGeneratedObject("Paddle_Left");
-        SetupLeftHandGrabVisual(pingPong.transform);
+        var leftHand = SetupLeftHandGrabVisual(pingPong.transform);
         var table = GameObject.Find("Table");
+        GameObject tableBlocker = null;
         if (table != null)
         {
             SetupTablePhysics(table);
+            tableBlocker = SetupPlayerTableBlocker(pingPong.transform, table.transform);
+            SetupControllerTableLimiter(leftHand, table.transform);
+            var rightPaddle = GameObject.Find("Paddle_Right");
+            if (rightPaddle != null)
+            {
+                SetupControllerTableLimiter(rightPaddle, table.transform);
+            }
         }
-        SetupPlayerTableBlocker(pingPong.transform);
+        else
+        {
+            tableBlocker = SetupPlayerTableBlocker(pingPong.transform);
+        }
+        var leftController = BindController(leftHand.GetComponent<ControllerTransformFollower>(), false);
+        var leftBallGrabber = SetupControllerBallGrabber(GetOrCreate("Managers").transform, leftController);
+        var spawner = Object.FindObjectOfType<BallSpawner>();
+        if (table != null && spawner != null)
+        {
+            SetupTableDragHandle(pingPong.transform, table, leftController, leftBallGrabber, spawner, spawner.spawnPoint, spawner.targetPoint, tableBlocker != null ? tableBlocker.transform : null);
+        }
         RemoveRootLevelGeneratedBallObjects();
         RepairExistingBallObjectsInScene();
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
@@ -838,6 +859,15 @@ public static class PingPongDemoSceneBuilder
         var darkMaterial = CreateOrLoadMaterial("VRTableTennis_DarkRubber", new Color(0.02f, 0.02f, 0.02f), AdaptedMaterialRoot);
         BuildStandardTableVisual(table.transform, tableMaterial, netMaterial, darkMaterial);
 
+        var rb = table.GetComponent<Rigidbody>();
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.useGravity = false;
+            rb.velocity = Vector3.zero;
+            rb.angularVelocity = Vector3.zero;
+        }
+
         var tableCollider = EnsureComponent<BoxCollider>(table);
         if (tableCollider != null)
         {
@@ -876,10 +906,11 @@ public static class PingPongDemoSceneBuilder
         EditorUtility.SetDirty(table);
     }
 
-    private static void SetupPlayerTableBlocker(Transform parent)
+    private static GameObject SetupPlayerTableBlocker(Transform parent, Transform tableTransform = null)
     {
         var blocker = GetOrCreate("TablePlayerBlocker", parent);
-        blocker.transform.position = PingPongGeometry.TableCenter + Vector3.up * 0.1f;
+        var tableCenter = tableTransform != null ? tableTransform.position : PingPongGeometry.TableCenter;
+        blocker.transform.position = tableCenter + Vector3.up * 0.1f;
         blocker.transform.localRotation = Quaternion.identity;
         blocker.transform.localScale = Vector3.one;
 
@@ -900,7 +931,8 @@ public static class PingPongDemoSceneBuilder
         var boundary = EnsureComponent<PlayerTableBoundary>(blocker);
         if (boundary != null)
         {
-            boundary.tableCenter = PingPongGeometry.TableCenter;
+            boundary.tableTransform = tableTransform;
+            boundary.tableCenter = tableCenter;
             boundary.tableSize = PingPongGeometry.TableBlockerSize(0.24f);
             boundary.margin = 0.12f;
         }
@@ -913,6 +945,7 @@ public static class PingPongDemoSceneBuilder
         }
 
         EditorUtility.SetDirty(blocker);
+        return blocker;
     }
 
     private static Vector3 LocalSizeForWorldSize(Transform transform, Vector3 worldSize)
@@ -1047,11 +1080,11 @@ public static class PingPongDemoSceneBuilder
         return null;
     }
 
-    private static void SetupControllerBallGrabber(Transform parent, Transform leftController)
+    private static ControllerBallGrabber SetupControllerBallGrabber(Transform parent, Transform leftController)
     {
         var grabberObject = GetOrCreate("LeftBallGrabber", parent);
         var grabber = EnsureComponent<ControllerBallGrabber>(grabberObject);
-        if (grabber == null) return;
+        if (grabber == null) return null;
 
         grabber.controllerTransform = leftController;
         grabber.controllerNode = XRNode.LeftHand;
@@ -1061,7 +1094,74 @@ public static class PingPongDemoSceneBuilder
         grabber.grabScanInterval = 0.04f;
         grabber.grabLayers = ~0;
         grabber.holdOffset = new Vector3(0f, 0f, 0.08f);
+        grabber.suppressGrab = false;
         EditorUtility.SetDirty(grabberObject);
+        return grabber;
+    }
+
+    private static void SetupControllerTableLimiter(GameObject controllerVisual, Transform tableTransform)
+    {
+        if (controllerVisual == null) return;
+
+        var limiter = EnsureComponent<ControllerTableCollisionLimiter>(controllerVisual);
+        if (limiter == null) return;
+
+        limiter.tableTransform = tableTransform;
+        limiter.tableSize = new Vector2(PingPongGeometry.TableWidth, PingPongGeometry.TableLength);
+        limiter.tableTopY = PingPongGeometry.TableTopHeight;
+        limiter.horizontalMargin = 0.04f;
+        limiter.verticalMargin = 0.03f;
+        EditorUtility.SetDirty(controllerVisual);
+    }
+
+    private static void SetupTableDragHandle(Transform parent, GameObject table, Transform leftController, ControllerBallGrabber leftBallGrabber, BallSpawner spawner, Transform spawn, Transform target, Transform tableBlocker)
+    {
+        if (table == null) return;
+
+        var handle = GetOrCreate("LeftTableDragHandle", parent);
+        handle.transform.SetParent(table.transform, false);
+        handle.transform.localPosition = new Vector3(-PingPongGeometry.TableWidth * 0.5f - 0.08f, PingPongGeometry.TableThickness * 0.5f + 0.08f, -PingPongGeometry.TableLength * 0.5f + 0.16f);
+        handle.transform.localRotation = Quaternion.identity;
+        handle.transform.localScale = Vector3.one;
+
+        var material = CreateOrLoadMaterial("TableDragHandleYellow", new Color(1f, 0.75f, 0.08f));
+        ConfigureVisualPrimitive(handle.transform, "HandleVisual", PrimitiveType.Sphere, Vector3.zero, Vector3.zero, Vector3.one * 0.11f, material);
+
+        var collider = EnsureComponent<SphereCollider>(handle);
+        if (collider != null)
+        {
+            collider.center = Vector3.zero;
+            collider.radius = 0.08f;
+            collider.isTrigger = true;
+        }
+
+        var dragHandle = EnsureComponent<TableDragHandle>(handle);
+        if (dragHandle != null)
+        {
+            var tableBounceLocalZ = 1.45f - PingPongGeometry.TableCenter.z;
+            dragHandle.tableRoot = table.transform;
+            dragHandle.controllerTransform = leftController;
+            dragHandle.controllerNode = XRNode.LeftHand;
+            dragHandle.ballGrabber = leftBallGrabber;
+            dragHandle.syncedTransforms = new[] { spawn, target, tableBlocker };
+            dragHandle.syncedSpawners = spawner != null ? new[] { spawner } : null;
+            dragHandle.activationRadius = 0.2f;
+            dragHandle.tableBounceLocalZ = tableBounceLocalZ;
+            dragHandle.lockTableHeight = true;
+            dragHandle.constrainToBounds = true;
+            dragHandle.xBounds = new Vector2(-1.25f, 1.25f);
+            dragHandle.zBounds = new Vector2(0.9f, 3.2f);
+
+            if (spawner != null)
+            {
+                spawner.netWorldZ = table.transform.position.z;
+                spawner.tableBounceWorldY = table.transform.position.y + PingPongGeometry.TableThickness * 0.5f + PingPongGeometry.BallRadius;
+                spawner.tableBounceWorldZ = table.transform.position.z + tableBounceLocalZ;
+                EditorUtility.SetDirty(spawner);
+            }
+        }
+
+        EditorUtility.SetDirty(handle);
     }
 
     private static void SetupInitialViewAligner(Transform parent)

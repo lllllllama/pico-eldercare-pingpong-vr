@@ -15,6 +15,7 @@ public class ControllerBallGrabber : MonoBehaviour
     public LayerMask grabLayers = ~0;
     public Vector3 holdOffset = new Vector3(0f, 0f, 0.08f);
     public GrabHandPoseAnimator handPoseAnimator;
+    public bool suppressGrab;
 
     private readonly Collider[] _grabCandidates = new Collider[64];
     private readonly List<InputDevice> _devices = new List<InputDevice>();
@@ -27,6 +28,8 @@ public class ControllerBallGrabber : MonoBehaviour
     private float _nextHandPoseSearchTime;
     private bool _waitForGripReleaseBeforeGrab;
     private bool _wasGripPressed;
+
+    public bool IsHoldingBall => _grabbedBall != null;
 
     private void OnEnable()
     {
@@ -50,7 +53,7 @@ public class ControllerBallGrabber : MonoBehaviour
             _waitForGripReleaseBeforeGrab = false;
         }
 
-        if (gripPressed && !_waitForGripReleaseBeforeGrab && _grabbedBall == null && Time.time >= _nextGrabScanTime)
+        if (gripPressed && !suppressGrab && !_waitForGripReleaseBeforeGrab && _grabbedBall == null && Time.time >= _nextGrabScanTime)
         {
             _nextGrabScanTime = Time.time + grabScanInterval;
             TryGrabNearestBall();

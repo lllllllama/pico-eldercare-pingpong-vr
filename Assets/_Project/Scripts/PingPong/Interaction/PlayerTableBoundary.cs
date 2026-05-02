@@ -2,6 +2,7 @@ using UnityEngine;
 
 public class PlayerTableBoundary : MonoBehaviour
 {
+    public Transform tableTransform;
     public Vector3 tableCenter = PingPongGeometry.TableCenter;
     public Vector2 tableSize = PingPongGeometry.TableBlockerSize(0.24f);
     public float margin = 0.12f;
@@ -24,12 +25,21 @@ public class PlayerTableBoundary : MonoBehaviour
         }
 
         if (_rigRoot == null) return;
+        if (tableTransform == null)
+        {
+            var table = GameObject.Find("Table");
+            if (table != null)
+            {
+                tableTransform = table.transform;
+            }
+        }
 
         var head = _camera.transform.position;
+        var center = tableTransform != null ? tableTransform.position : tableCenter;
         var halfX = tableSize.x * 0.5f + margin;
         var halfZ = tableSize.y * 0.5f + margin;
-        var localX = head.x - tableCenter.x;
-        var localZ = head.z - tableCenter.z;
+        var localX = head.x - center.x;
+        var localZ = head.z - center.z;
 
         if (Mathf.Abs(localX) > halfX || Mathf.Abs(localZ) > halfZ) return;
 
