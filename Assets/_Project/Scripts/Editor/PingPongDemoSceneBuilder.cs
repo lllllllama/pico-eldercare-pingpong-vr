@@ -859,13 +859,21 @@ public static class PingPongDemoSceneBuilder
         var darkMaterial = CreateOrLoadMaterial("VRTableTennis_DarkRubber", new Color(0.02f, 0.02f, 0.02f), AdaptedMaterialRoot);
         BuildStandardTableVisual(table.transform, tableMaterial, netMaterial, darkMaterial);
 
-        var rb = table.GetComponent<Rigidbody>();
+        var rb = EnsureComponent<Rigidbody>(table);
         if (rb != null)
         {
             rb.isKinematic = true;
             rb.useGravity = false;
             rb.velocity = Vector3.zero;
             rb.angularVelocity = Vector3.zero;
+            rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+            rb.constraints = RigidbodyConstraints.FreezeAll;
+        }
+
+        var passiveLock = EnsureComponent<TablePassiveMotionLock>(table);
+        if (passiveLock != null)
+        {
+            passiveLock.AcceptCurrentTransform();
         }
 
         var tableCollider = EnsureComponent<BoxCollider>(table);
@@ -935,6 +943,7 @@ public static class PingPongDemoSceneBuilder
             boundary.tableCenter = tableCenter;
             boundary.tableSize = PingPongGeometry.TableBlockerSize(0.24f);
             boundary.margin = 0.12f;
+            boundary.moveRigWhenInside = false;
         }
 
         var surface = EnsureComponent<PingPongSurface>(blocker);
@@ -1149,8 +1158,8 @@ public static class PingPongDemoSceneBuilder
             dragHandle.tableBounceLocalZ = tableBounceLocalZ;
             dragHandle.lockTableHeight = true;
             dragHandle.constrainToBounds = true;
-            dragHandle.xBounds = new Vector2(-1.25f, 1.25f);
-            dragHandle.zBounds = new Vector2(0.9f, 3.2f);
+            dragHandle.xBounds = new Vector2(-1.5f, 1.5f);
+            dragHandle.zBounds = new Vector2(0.55f, 3.8f);
 
             if (spawner != null)
             {
@@ -1159,6 +1168,14 @@ public static class PingPongDemoSceneBuilder
                 spawner.tableBounceWorldZ = table.transform.position.z + tableBounceLocalZ;
                 EditorUtility.SetDirty(spawner);
             }
+        }
+
+        var passiveLock = EnsureComponent<TablePassiveMotionLock>(table);
+        if (passiveLock != null)
+        {
+            passiveLock.dragHandle = dragHandle;
+            passiveLock.AcceptCurrentTransform();
+            EditorUtility.SetDirty(table);
         }
 
         EditorUtility.SetDirty(handle);

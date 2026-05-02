@@ -6,6 +6,7 @@ public class PlayerTableBoundary : MonoBehaviour
     public Vector3 tableCenter = PingPongGeometry.TableCenter;
     public Vector2 tableSize = PingPongGeometry.TableBlockerSize(0.24f);
     public float margin = 0.12f;
+    public bool moveRigWhenInside = false;
 
     private Transform _rigRoot;
     private Camera _camera;
@@ -42,6 +43,7 @@ public class PlayerTableBoundary : MonoBehaviour
         var localZ = head.z - center.z;
 
         if (Mathf.Abs(localX) > halfX || Mathf.Abs(localZ) > halfZ) return;
+        if (!moveRigWhenInside) return;
 
         var pushToX = halfX - Mathf.Abs(localX);
         var pushToZ = halfZ - Mathf.Abs(localZ);

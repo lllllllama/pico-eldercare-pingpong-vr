@@ -19,7 +19,7 @@ public class TableDragHandle : MonoBehaviour
     public Vector2 zBounds = new Vector2(0.75f, 3.35f);
 
     private readonly List<InputDevice> _devices = new List<InputDevice>();
-    private Vector3 _tableOffsetFromController;
+    private Vector3 _lastControllerPosition;
     private float _lockedTableY;
     private bool _dragging;
     private bool _wasGripPressed;
@@ -79,13 +79,16 @@ public class TableDragHandle : MonoBehaviour
     private void BeginDrag()
     {
         _dragging = true;
-        _tableOffsetFromController = tableRoot.position - controllerTransform.position;
+        _lastControllerPosition = controllerTransform.position;
         _lockedTableY = tableRoot.position.y;
     }
 
     private void DragTable()
     {
-        var nextPosition = controllerTransform.position + _tableOffsetFromController;
+        var controllerDelta = controllerTransform.position - _lastControllerPosition;
+        _lastControllerPosition = controllerTransform.position;
+
+        var nextPosition = tableRoot.position + new Vector3(controllerDelta.x, 0f, controllerDelta.z);
         if (lockTableHeight)
         {
             nextPosition.y = _lockedTableY;
