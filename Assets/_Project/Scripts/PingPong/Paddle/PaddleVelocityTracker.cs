@@ -9,16 +9,21 @@ public class PaddleVelocityTracker : MonoBehaviour
     public Vector3 hitZoneColliderSize = PingPongGeometry.PaddleHitZoneSize;
     [Range(0f, 1f)] public float velocitySmoothing = 0.35f;
     [Range(0f, 1f)] public float angularVelocitySmoothing = 0.35f;
+    [Range(0f, 1f)] public float accelerationSmoothing = 0.45f;
 
     public Vector3 Velocity { get; private set; }
     public Vector3 RawVelocity { get; private set; }
+    public Vector3 Acceleration { get; private set; }
+    public Vector3 RawAcceleration { get; private set; }
     public Vector3 AngularVelocity { get; private set; }
     public Vector3 RawAngularVelocity { get; private set; }
     public float Speed => Velocity.magnitude;
     public float MaxSpeed { get; private set; }
+    public float AccelerationMagnitude => Acceleration.magnitude;
 
     private Vector3 _lastPosition;
     private Quaternion _lastRotation;
+    private Vector3 _lastRawVelocity;
     private bool _hasLastPose;
 
     private void Awake()
@@ -34,8 +39,11 @@ public class PaddleVelocityTracker : MonoBehaviour
         _hasLastPose = true;
         Velocity = Vector3.zero;
         RawVelocity = Vector3.zero;
+        Acceleration = Vector3.zero;
+        RawAcceleration = Vector3.zero;
         AngularVelocity = Vector3.zero;
         RawAngularVelocity = Vector3.zero;
+        _lastRawVelocity = Vector3.zero;
         MaxSpeed = 0f;
     }
 
@@ -53,10 +61,13 @@ public class PaddleVelocityTracker : MonoBehaviour
         {
             Velocity = Vector3.zero;
             RawVelocity = Vector3.zero;
+            Acceleration = Vector3.zero;
+            RawAcceleration = Vector3.zero;
             AngularVelocity = Vector3.zero;
             RawAngularVelocity = Vector3.zero;
             _lastPosition = transform.position;
             _lastRotation = transform.rotation;
+            _lastRawVelocity = Vector3.zero;
             _hasLastPose = true;
             return;
         }
@@ -64,11 +75,14 @@ public class PaddleVelocityTracker : MonoBehaviour
         var currentPosition = transform.position;
         var currentRotation = transform.rotation;
         RawVelocity = (currentPosition - _lastPosition) / dt;
+        RawAcceleration = (RawVelocity - _lastRawVelocity) / dt;
         RawAngularVelocity = CalculateAngularVelocity(_lastRotation, currentRotation, dt);
         Velocity = Vector3.Lerp(RawVelocity, Velocity, Mathf.Clamp01(velocitySmoothing));
+        Acceleration = Vector3.Lerp(RawAcceleration, Acceleration, Mathf.Clamp01(accelerationSmoothing));
         AngularVelocity = Vector3.Lerp(RawAngularVelocity, AngularVelocity, Mathf.Clamp01(angularVelocitySmoothing));
         _lastPosition = currentPosition;
         _lastRotation = currentRotation;
+        _lastRawVelocity = RawVelocity;
 
         if (Speed > MaxSpeed)
         {
@@ -81,6 +95,17 @@ public class PaddleVelocityTracker : MonoBehaviour
     public Vector3 GetSurfaceVelocity(Vector3 worldPoint)
     {
         return Velocity + Vector3.Cross(AngularVelocity, worldPoint - transform.position);
+    }
+
+    public Vector3 GetRawSurfaceVelocity(Vector3 worldPoint)
+    {
+        return RawVelocity + Vector3.Cross(RawAngularVelocity, worldPoint - transform.position);
+    }
+
+    public Vector3 GetPredictedPosition(float leadTime)
+    {
+        var t = Mathf.Max(0f, leadTime);
+        return transform.position + Velocity * t + 0.5f * Acceleration * t * t;
     }
 
     public Vector3 GetCenteredLocalHit(Vector3 worldPoint, Collider hitCollider)

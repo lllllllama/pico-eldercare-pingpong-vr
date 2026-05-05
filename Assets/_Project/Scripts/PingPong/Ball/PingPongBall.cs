@@ -3,6 +3,8 @@ using UnityEngine;
 [RequireComponent(typeof(Rigidbody))]
 public class PingPongBall : MonoBehaviour
 {
+    public const float DefaultMaxAngularVelocity = 180f;
+
     public float paddleVelocityMultiplier = 0.85f;
     public float forwardBoost = 2.2f;
     public float upwardBoost = 0.25f;
@@ -15,6 +17,14 @@ public class PingPongBall : MonoBehaviour
     public float maxSpeed = 9f;
     public bool enableSweptSurfaceFallback = true;
     public LayerMask sweptSurfaceLayers = ~0;
+    public bool useAerodynamics = true;
+    public float airDensity = 1.27f;
+    public float dragCoefficient = 0.5f;
+    public float magnusLiftCoefficient = 0.28f;
+    public float maximumAerodynamicAcceleration = 45f;
+    public float maxAngularVelocity = DefaultMaxAngularVelocity;
+    [Range(0f, 1f)] public float rawPaddleVelocityBlend = 0.28f;
+    [Range(0f, 1f)] public float highAccelerationRawBlend = 0.34f;
 
     private readonly RaycastHit[] _sweepHits = new RaycastHit[16];
     private Rigidbody _rb;
@@ -29,6 +39,7 @@ public class PingPongBall : MonoBehaviour
 
     public bool IsGrabbed => _activeGrabber != null;
     public bool CanBeGrabbed => !IsGrabbed && Time.time >= _ignoreGrabUntilTime;
+    public bool HasRegisteredHit => _hitRegistered;
 
     private bool IsHeld => IsGrabbed || (_rb != null && _rb.isKinematic && transform.parent != null);
 
@@ -48,7 +59,15 @@ public class PingPongBall : MonoBehaviour
 
     private void FixedUpdate()
     {
-        if (_rb == null || _rb.isKinematic || !enableSweptSurfaceFallback)
+        if (_rb == null || _rb.isKinematic)
+        {
+            _lastSweepPosition = transform.position;
+            return;
+        }
+
+        ApplyAerodynamics();
+
+        if (!enableSweptSurfaceFallback)
         {
             _lastSweepPosition = transform.position;
             return;
@@ -64,7 +83,8 @@ public class PingPongBall : MonoBehaviour
         if (tracker != null)
         {
             var hitPoint = transform.position;
-            var normal = EstimatePaddleFaceNormal(tracker.transform, _rb.velocity, tracker.GetSurfaceVelocity(hitPoint));
+            var surfaceVelocity = GetResponsiveSurfaceVelocity(tracker, hitPoint);
+            var normal = EstimatePaddleFaceNormal(tracker.transform, _rb.velocity, surfaceVelocity);
             if (collision.contactCount > 0)
             {
                 var contact = collision.GetContact(0);
@@ -120,11 +140,65 @@ public class PingPongBall : MonoBehaviour
         }
 
         _rb.mass = PingPongGeometry.BallMass;
-        _rb.drag = PingPongGeometry.BallDrag;
+        _rb.drag = useAerodynamics ? 0f : PingPongGeometry.BallDrag;
         _rb.angularDrag = PingPongGeometry.BallAngularDrag;
         _rb.useGravity = true;
         _rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         _rb.interpolation = RigidbodyInterpolation.Interpolate;
+        ConfigureSpinLimit(_rb, maxAngularVelocity);
+    }
+
+    public static void ConfigureSpinLimit(Rigidbody rb, float requiredAngularVelocity)
+    {
+        if (rb == null) return;
+
+        rb.maxAngularVelocity = Mathf.Max(
+            rb.maxAngularVelocity,
+            Mathf.Max(DefaultMaxAngularVelocity, Mathf.Max(0f, requiredAngularVelocity)));
+    }
+
+    private void ApplyAerodynamics()
+    {
+        if (!useAerodynamics || _rb == null || _rb.isKinematic) return;
+
+        var velocity = _rb.velocity;
+        if (velocity.sqrMagnitude < 0.0001f) return;
+
+        var acceleration = CalculateAerodynamicAcceleration(
+            velocity,
+            _rb.angularVelocity,
+            GetWorldRadius(),
+            _rb.mass,
+            airDensity,
+            dragCoefficient,
+            magnusLiftCoefficient,
+            maximumAerodynamicAcceleration);
+
+        if (!IsFinite(acceleration) || acceleration.sqrMagnitude < 0.0001f) return;
+
+        _rb.AddForce(acceleration, ForceMode.Acceleration);
+    }
+
+    public static Vector3 CalculateAerodynamicAcceleration(
+        Vector3 velocity,
+        Vector3 angularVelocity,
+        float radius,
+        float mass,
+        float airDensity,
+        float dragCoefficient,
+        float magnusLiftCoefficient,
+        float maximumAcceleration)
+    {
+        if (velocity.sqrMagnitude < 0.0001f) return Vector3.zero;
+
+        var safeRadius = Mathf.Max(radius, 0.001f);
+        var area = Mathf.PI * safeRadius * safeRadius;
+        var inverseMass = 1f / Mathf.Max(mass, 0.0001f);
+        var dragAcceleration = -0.5f * Mathf.Max(0f, airDensity) * Mathf.Max(0f, dragCoefficient) * area * velocity.magnitude * velocity * inverseMass;
+        var magnusAcceleration = 0.5f * Mathf.Max(0f, airDensity) * Mathf.Max(0f, magnusLiftCoefficient) * area * safeRadius * Vector3.Cross(angularVelocity, velocity) * inverseMass;
+        var acceleration = dragAcceleration + magnusAcceleration;
+        if (!IsFinite(acceleration)) return Vector3.zero;
+        return Vector3.ClampMagnitude(acceleration, Mathf.Max(0f, maximumAcceleration));
     }
 
     private void TryApplyTriggerInteraction(Collider other)
@@ -132,9 +206,10 @@ public class PingPongBall : MonoBehaviour
         var tracker = other.GetComponentInParent<PaddleVelocityTracker>();
         if (tracker != null)
         {
-            if (!IsHeld && tracker.Speed < 0.2f && _rb.velocity.sqrMagnitude > 0.02f) return;
+            var paddleSpeed = Mathf.Max(tracker.Speed, tracker.RawVelocity.magnitude);
+            if (!IsHeld && paddleSpeed < 0.2f && _rb.velocity.sqrMagnitude > 0.02f) return;
 
-            var surfaceVelocity = tracker.GetSurfaceVelocity(transform.position);
+            var surfaceVelocity = GetResponsiveSurfaceVelocity(tracker, transform.position);
             ApplyPaddleHit(
                 tracker,
                 EstimatePaddleFaceNormal(tracker.transform, _rb.velocity, surfaceVelocity),
@@ -157,8 +232,9 @@ public class PingPongBall : MonoBehaviour
         if (tracker == null || _rb == null) return;
 
         var wasHeld = IsHeld;
-        var surfaceVelocity = tracker.GetSurfaceVelocity(hitPoint);
-        if (wasHeld && tracker.Speed < heldBallMinimumSwingSpeed && Vector3.Dot(surfaceVelocity, Vector3.forward) < minimumClosingSpeed)
+        var surfaceVelocity = GetResponsiveSurfaceVelocity(tracker, hitPoint);
+        var paddleSpeed = Mathf.Max(tracker.Speed, tracker.RawVelocity.magnitude);
+        if (wasHeld && paddleSpeed < heldBallMinimumSwingSpeed && Vector3.Dot(surfaceVelocity, Vector3.forward) < minimumClosingSpeed)
         {
             return;
         }
@@ -206,6 +282,7 @@ public class PingPongBall : MonoBehaviour
         velocity += Vector3.forward * Mathf.Max(0f, Vector3.Dot(surfaceVelocity, Vector3.forward)) * paddleVelocityMultiplier * 0.18f;
         velocity = Vector3.ClampMagnitude(velocity, maxSpeed);
 
+        var finalAngularVelocity = Vector3.ClampMagnitude(result.angularVelocity, DefaultMaxAngularVelocity);
         if (_activeGrabber != null && _activeGrabber.ForceRelease(this, velocity))
         {
             _activeGrabber = null;
@@ -216,13 +293,28 @@ public class PingPongBall : MonoBehaviour
             _rb.velocity = velocity;
         }
 
-        _rb.angularVelocity = Vector3.ClampMagnitude(result.angularVelocity, 180f);
+        _rb.angularVelocity = finalAngularVelocity;
         _lastSweepPosition = transform.position;
+
+        var firstHitForBall = !_hitRegistered;
+        PingPongEvents.BallHit(
+            new BallHitInfo(
+                gameObject,
+                hitCollider,
+                wasHeld ? PingPongHitType.HeldBallPaddle : PingPongHitType.Paddle,
+                hitPoint,
+                normal,
+                incomingVelocity,
+                velocity,
+                surfaceVelocity,
+                finalAngularVelocity,
+                result.closingSpeed,
+                firstHitForBall),
+            firstHitForBall);
 
         if (!_hitRegistered)
         {
             _hitRegistered = true;
-            PingPongEvents.BallHit();
         }
     }
 
@@ -245,7 +337,8 @@ public class PingPongBall : MonoBehaviour
         var closingSpeed = -Vector3.Dot(_rb.velocity, normal);
         if (closingSpeed < 0.02f) return;
 
-        var input = PingPongHitSolver.CreateDefault(_rb.velocity, _rb.angularVelocity, normal, Vector3.zero);
+        var incomingVelocity = _rb.velocity;
+        var input = PingPongHitSolver.CreateDefault(incomingVelocity, _rb.angularVelocity, normal, Vector3.zero);
         input.normalRestitution = surface.normalRestitution;
         input.tangentialFriction = surface.tangentialFriction;
         input.spinTransfer = 0.35f;
@@ -262,11 +355,24 @@ public class PingPongBall : MonoBehaviour
             transform.position = CorrectedSurfacePosition(contactPoint, normal);
         }
 
+        var finalAngularVelocity = Vector3.ClampMagnitude(result.angularVelocity, DefaultMaxAngularVelocity);
         _rb.velocity = result.velocity;
-        _rb.angularVelocity = Vector3.ClampMagnitude(result.angularVelocity, 180f);
+        _rb.angularVelocity = finalAngularVelocity;
         _lastSurfaceCollider = collider;
         _lastSurfaceHitTime = Time.time;
         _lastSweepPosition = transform.position;
+
+        PingPongEvents.SurfaceBounce(new SurfaceBounceInfo(
+            gameObject,
+            collider,
+            surface.surfaceType,
+            contactPoint,
+            normal,
+            incomingVelocity,
+            result.velocity,
+            finalAngularVelocity,
+            result.closingSpeed,
+            forcePositionCorrection));
     }
 
     private void TryApplySweptSurfaceFallback(Vector3 start, Vector3 end)
@@ -350,6 +456,16 @@ public class PingPongBall : MonoBehaviour
         _rb.useGravity = true;
     }
 
+    private Vector3 GetResponsiveSurfaceVelocity(PaddleVelocityTracker tracker, Vector3 worldPoint)
+    {
+        if (tracker == null) return Vector3.zero;
+
+        var smoothed = tracker.GetSurfaceVelocity(worldPoint);
+        var raw = tracker.GetRawSurfaceVelocity(worldPoint);
+        var accelerationBlend = Mathf.InverseLerp(6f, 24f, tracker.RawAcceleration.magnitude) * highAccelerationRawBlend;
+        return Vector3.Lerp(smoothed, raw, Mathf.Clamp01(rawPaddleVelocityBlend + accelerationBlend));
+    }
+
     private float GetWorldRadius()
     {
         if (_sphereCollider == null)
@@ -396,5 +512,11 @@ public class PingPongBall : MonoBehaviour
         }
 
         return Vector3.Slerp(collisionNormal, faceNormal, 0.35f);
+    }
+
+    private static bool IsFinite(Vector3 value)
+    {
+        return !float.IsNaN(value.x) && !float.IsNaN(value.y) && !float.IsNaN(value.z) &&
+               !float.IsInfinity(value.x) && !float.IsInfinity(value.y) && !float.IsInfinity(value.z);
     }
 }

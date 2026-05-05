@@ -11,6 +11,7 @@ public class BallSpawner : MonoBehaviour
 
     public float serveInterval = 4.0f;
     public float serveSpeed = 2.6f;
+    public PingPongServeProfile serveProfile = PingPongServeProfile.RandomMixed;
     public float upwardArc = 0.35f;
     public float minimumNetClearanceHeight = PingPongGeometry.TableTopHeight + PingPongGeometry.NetHeight + 0.08f;
     public float netWorldZ = PingPongGeometry.TableCenter.z;
@@ -19,6 +20,11 @@ public class BallSpawner : MonoBehaviour
     public float tableBounceWorldZ = 1.45f;
     public float horizontalRandomRange = 0.18f;
     public float verticalRandomRange = 0.08f;
+    public float topspinRadiansPerSecond = 95f;
+    public float backspinRadiansPerSecond = 80f;
+    public float sidespinRadiansPerSecond = 50f;
+    [Range(0f, 1f)] public float serveSpinRandomness = 0.18f;
+    public float maxServeSpin = 140f;
 
     private static PhysicMaterial _ballPhysicsMaterial;
     private Coroutine _serveRoutine;
@@ -87,10 +93,16 @@ public class BallSpawner : MonoBehaviour
             trajectoryTarget = new Vector3(target.x, tableBounceWorldY, tableBounceWorldZ);
         }
 
-        rb.velocity = CalculateServeVelocity(spawnPoint.position, trajectoryTarget);
-        rb.angularVelocity = Vector3.zero;
+        var velocity = CalculateServeVelocity(spawnPoint.position, trajectoryTarget);
+        var actualProfile = SelectServeProfile();
+        var spin = CalculateProfileSpin(actualProfile, velocity, topspinRadiansPerSecond, backspinRadiansPerSecond, sidespinRadiansPerSecond);
+        spin = ApplySpinRandomness(spin);
 
-        PingPongEvents.BallServed();
+        rb.velocity = velocity;
+        PingPongBall.ConfigureSpinLimit(rb, maxServeSpin);
+        rb.angularVelocity = Vector3.ClampMagnitude(spin, maxServeSpin);
+
+        PingPongEvents.BallServed(new BallServedInfo(ballObj, ballObj.transform.position, rb.velocity, rb.angularVelocity, actualProfile));
     }
 
     private Vector3 CalculateServeVelocity(Vector3 start, Vector3 target)
@@ -103,7 +115,8 @@ public class BallSpawner : MonoBehaviour
         }
 
         var timeToTarget = horizontalDistance / Mathf.Max(serveSpeed, 0.1f);
-        timeToTarget = Mathf.Clamp(timeToTarget, 0.55f, 0.9f);
+        var arcFactor = Mathf.Lerp(0.92f, 1.18f, Mathf.Clamp01(upwardArc));
+        timeToTarget = Mathf.Clamp(timeToTarget * arcFactor, 0.55f, 1.05f);
 
         var velocity = horizontalDelta / timeToTarget;
         velocity.y = (target.y - start.y - 0.5f * Physics.gravity.y * timeToTarget * timeToTarget) / timeToTarget;
@@ -124,6 +137,65 @@ public class BallSpawner : MonoBehaviour
         return velocity;
     }
 
+    public static Vector3 CalculateProfileSpin(
+        PingPongServeProfile profile,
+        Vector3 launchVelocity,
+        float topspinRadiansPerSecond,
+        float backspinRadiansPerSecond,
+        float sidespinRadiansPerSecond)
+    {
+        var flatVelocity = new Vector3(launchVelocity.x, 0f, launchVelocity.z);
+        if (flatVelocity.sqrMagnitude < 0.0001f)
+        {
+            flatVelocity = Vector3.back;
+        }
+
+        var forwardRollAxis = Vector3.Cross(Vector3.up, flatVelocity.normalized);
+        if (forwardRollAxis.sqrMagnitude < 0.0001f)
+        {
+            forwardRollAxis = Vector3.right;
+        }
+
+        forwardRollAxis.Normalize();
+
+        switch (profile)
+        {
+            case PingPongServeProfile.Topspin:
+                return forwardRollAxis * Mathf.Max(0f, topspinRadiansPerSecond);
+            case PingPongServeProfile.Backspin:
+                return -forwardRollAxis * Mathf.Max(0f, backspinRadiansPerSecond);
+            case PingPongServeProfile.Sidespin:
+                return Vector3.up * Mathf.Max(0f, sidespinRadiansPerSecond);
+            default:
+                return Vector3.zero;
+        }
+    }
+
+    private PingPongServeProfile SelectServeProfile()
+    {
+        if (serveProfile != PingPongServeProfile.RandomMixed)
+        {
+            return serveProfile;
+        }
+
+        var roll = Random.value;
+        if (roll < 0.25f) return PingPongServeProfile.Basic;
+        if (roll < 0.58f) return PingPongServeProfile.Topspin;
+        if (roll < 0.84f) return PingPongServeProfile.Backspin;
+        return PingPongServeProfile.Sidespin;
+    }
+
+    private Vector3 ApplySpinRandomness(Vector3 spin)
+    {
+        var spinMagnitude = spin.magnitude;
+        if (spinMagnitude <= 0.001f || serveSpinRandomness <= 0f)
+        {
+            return spin;
+        }
+
+        return spin + Random.insideUnitSphere * (spinMagnitude * serveSpinRandomness);
+    }
+
     private static Rigidbody ConfigureSpawnedBall(GameObject ballObj)
     {
         var rb = ballObj.GetComponent<Rigidbody>();
@@ -135,11 +207,18 @@ public class BallSpawner : MonoBehaviour
         if (rb == null) return null;
 
         rb.mass = PingPongGeometry.BallMass;
-        rb.drag = PingPongGeometry.BallDrag;
+        var pingPongBall = ballObj.GetComponent<PingPongBall>();
+        if (pingPongBall == null)
+        {
+            pingPongBall = ballObj.AddComponent<PingPongBall>();
+        }
+
+        rb.drag = pingPongBall != null && pingPongBall.useAerodynamics ? 0f : PingPongGeometry.BallDrag;
         rb.angularDrag = PingPongGeometry.BallAngularDrag;
         rb.useGravity = true;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
+        PingPongBall.ConfigureSpinLimit(rb, pingPongBall != null ? pingPongBall.maxAngularVelocity : PingPongBall.DefaultMaxAngularVelocity);
 
         var collider = ballObj.GetComponent<SphereCollider>();
         if (collider == null)
@@ -152,7 +231,6 @@ public class BallSpawner : MonoBehaviour
         collider.isTrigger = false;
         collider.sharedMaterial = GetBallPhysicsMaterial();
 
-        if (ballObj.GetComponent<PingPongBall>() == null) ballObj.AddComponent<PingPongBall>();
         if (ballObj.GetComponent<BallLifetime>() == null) ballObj.AddComponent<BallLifetime>();
 
         return rb;

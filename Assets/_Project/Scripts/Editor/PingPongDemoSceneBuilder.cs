@@ -1,12 +1,15 @@
+using System.Collections.Generic;
 using System.IO;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.XR.PXR;
 using UnityEngine.XR;
 
 public static class PingPongDemoSceneBuilder
 {
+    private const string DemoScenePath = "Assets/_Project/Scenes/01_PingPongDemo.unity";
     private const string PrefabRoot = "Assets/_Project/Prefabs/PingPong";
     private const string MaterialRoot = "Assets/_Project/Materials/PingPong";
     private const string ExternalRoot = "Assets/_Project/External/VRTableTennis";
@@ -43,11 +46,33 @@ public static class PingPongDemoSceneBuilder
     [MenuItem("Tools/PICO ElderCare/Build PingPong Demo Scene")]
     public static void BuildDemoScene()
     {
+        BuildDemoSceneInternal(false);
+    }
+
+    [MenuItem("Tools/PICO ElderCare/Build PingPong Mixed Reality Scene")]
+    public static void BuildMixedRealityDemoScene()
+    {
+        BuildDemoSceneInternal(true);
+    }
+
+    private static void BuildDemoSceneInternal(bool mixedRealityMode)
+    {
         if (!EnsureEditMode()) return;
 
+        OpenDemoSceneForBatchMode();
         EnsureFolders();
+        if (mixedRealityMode)
+        {
+            ConfigureMixedRealityProjectSettings();
+        }
+        else
+        {
+            ConfigureVirtualRealityProjectSettings();
+        }
+
         RemoveRootLevelGeneratedBallObjects();
-        TryCreateOrUpdateAdaptedPrefabs(false);
+        TryCreateOrUpdateAdaptedPrefabs(true);
+        OpenDemoSceneForBatchMode();
         RemoveRootLevelGeneratedBallObjects();
         RepairExistingBallObjectsInScene();
 
@@ -56,15 +81,24 @@ public static class PingPongDemoSceneBuilder
         var managers = GetOrCreate("Managers");
         var uiRoot = GetOrCreate("UI");
 
-        EnsureFloor(environment.transform);
         EnsureLight(environment.transform);
-        EnsureBackWall(environment.transform);
+        if (mixedRealityMode)
+        {
+            DisableVirtualRoomSurfaces(environment.transform);
+        }
+        else
+        {
+            DisableMixedRealitySceneState();
+            EnsureFloor(environment.transform);
+            EnsureBackWall(environment.transform);
+            ConfigureMainCameraForVirtualReality();
+        }
 
         var tablePrefab = LoadAdaptedPrefab("PingPongTable") ??
                           LoadOrCreatePrefabAsset("PingPongTable", PrimitiveType.Cube, TableColliderWorldSize, CreateOrLoadMaterial("TableBlue", new Color(0.07f, 0.3f, 0.47f)));
         var paddlePrefab = LoadAdaptedPrefab("PingPongPaddle") ??
                            LoadOrCreatePrefabAsset("PingPongPaddle", PrimitiveType.Cube, PaddleColliderSize, CreateOrLoadMaterial("PaddleRed", new Color(0.66f, 0.11f, 0.11f)));
-        var ballPrefab = CreateOrUpdateBallPrefab();
+        var ballPrefab = LoadAdaptedBallPrefab() ?? CreateOrUpdateBallPrefab();
         if (ballPrefab == null)
         {
             Debug.LogError("Could not create or load PingPong ball prefab. Demo scene generation stopped.");
@@ -100,6 +134,8 @@ public static class PingPongDemoSceneBuilder
         spawner.ballContainer = ballContainer.transform;
         spawner.autoStartOnPlay = true;
         spawner.serveSpeed = 3.0f;
+        spawner.serveProfile = PingPongServeProfile.RandomMixed;
+        spawner.upwardArc = 0.42f;
         spawner.minimumNetClearanceHeight = PingPongGeometry.TableTopHeight + PingPongGeometry.NetHeight + 0.08f;
         spawner.netWorldZ = PingPongGeometry.TableCenter.z;
         spawner.bounceOnTableBeforePlayer = true;
@@ -107,6 +143,11 @@ public static class PingPongDemoSceneBuilder
         spawner.tableBounceWorldZ = 1.45f;
         spawner.horizontalRandomRange = 0.12f;
         spawner.verticalRandomRange = 0.04f;
+        spawner.topspinRadiansPerSecond = 95f;
+        spawner.backspinRadiansPerSecond = 80f;
+        spawner.sidespinRadiansPerSecond = 50f;
+        spawner.serveSpinRandomness = 0.18f;
+        spawner.maxServeSpin = 140f;
         ValidateBallSpawnerBindings(spawner);
 
         var scoreObject = GetOrCreate("ScoreManager", managers.transform);
@@ -122,18 +163,41 @@ public static class PingPongDemoSceneBuilder
         BindController(rightPaddle.GetComponent<PaddleFollower>(), true);
         var leftController = BindController(leftHand.GetComponent<ControllerTransformFollower>(), false);
         var leftBallGrabber = SetupControllerBallGrabber(managers.transform, leftController);
-        SetupTableDragHandle(pingPong.transform, table, leftController, leftBallGrabber, spawner, spawn.transform, target.transform, tableBlocker != null ? tableBlocker.transform : null);
-        SetupInitialViewAligner(managers.transform);
+        var uiCanvas = GameObject.Find("WorldSpaceCanvas")?.transform;
+        var dragHandle = SetupTableDragHandle(
+            pingPong.transform,
+            table,
+            leftController,
+            leftBallGrabber,
+            spawner,
+            spawn.transform,
+            target.transform,
+            tableBlocker != null ? tableBlocker.transform : null,
+            mixedRealityMode,
+            net != null ? net.transform : null,
+            uiCanvas);
+        SetupInitialViewAligner(managers.transform, mixedRealityMode);
+
+        if (mixedRealityMode)
+        {
+            SetupMixedRealityMode(managers.transform, environment.transform, table.transform, dragHandle);
+        }
 
         EditorUtility.SetDirty(table);
         if (net != null) EditorUtility.SetDirty(net);
         EditorUtility.SetDirty(rightPaddle);
         EditorUtility.SetDirty(leftHand);
         EditorUtility.SetDirty(spawnerObject);
-        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        MarkActiveSceneDirtyAndSaveForBatch();
         AssetDatabase.SaveAssets();
 
-        EditorUtility.DisplayDialog("PingPong", "PingPong Demo scene objects and prefab assets are ready.", "OK");
+        if (!Application.isBatchMode)
+        {
+            var message = mixedRealityMode
+                ? "PingPong Mixed Reality scene objects, passthrough, placement, and room sensing helpers are ready."
+                : "PingPong Demo scene objects and prefab assets are ready.";
+            EditorUtility.DisplayDialog("PingPong", message, "OK");
+        }
     }
 
     [MenuItem("Tools/PICO ElderCare/Repair PingPong Demo Scene Objects")]
@@ -141,6 +205,7 @@ public static class PingPongDemoSceneBuilder
     {
         if (!EnsureEditMode()) return;
 
+        OpenDemoSceneForBatchMode();
         EnsureFolders();
         TryCreateOrUpdateAdaptedPrefabs(false);
         var environment = GetOrCreate("Environment");
@@ -172,11 +237,11 @@ public static class PingPongDemoSceneBuilder
         var spawner = Object.FindObjectOfType<BallSpawner>();
         if (table != null && spawner != null)
         {
-            SetupTableDragHandle(pingPong.transform, table, leftController, leftBallGrabber, spawner, spawner.spawnPoint, spawner.targetPoint, tableBlocker != null ? tableBlocker.transform : null);
+            SetupTableDragHandle(pingPong.transform, table, leftController, leftBallGrabber, spawner, spawner.spawnPoint, spawner.targetPoint, tableBlocker != null ? tableBlocker.transform : null, false);
         }
         RemoveRootLevelGeneratedBallObjects();
         RepairExistingBallObjectsInScene();
-        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(UnityEngine.SceneManagement.SceneManager.GetActiveScene());
+        MarkActiveSceneDirtyAndSaveForBatch();
         AssetDatabase.SaveAssets();
 
         EditorUtility.DisplayDialog("PingPong", "PingPong Demo scene objects have been repaired.", "OK");
@@ -193,6 +258,58 @@ public static class PingPongDemoSceneBuilder
         EnsureFolderPath(OriginalRoot);
         EnsureFolderPath(AdaptedRoot);
         EnsureFolderPath(AdaptedMaterialRoot);
+    }
+
+    private static void OpenDemoSceneForBatchMode()
+    {
+        if (!Application.isBatchMode) return;
+
+        var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        if (activeScene.path == DemoScenePath) return;
+
+        UnityEditor.SceneManagement.EditorSceneManager.OpenScene(DemoScenePath, UnityEditor.SceneManagement.OpenSceneMode.Single);
+    }
+
+    private static void MarkActiveSceneDirtyAndSaveForBatch()
+    {
+        var activeScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(activeScene);
+
+        if (Application.isBatchMode)
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.SaveScene(activeScene);
+        }
+    }
+
+    private static void ConfigureMixedRealityProjectSettings()
+    {
+        var config = PXR_ProjectSetting.GetProjectConfig();
+        if (config == null) return;
+
+        config.openMRC = true;
+        config.videoSeeThrough = true;
+        config.spatialAnchor = true;
+        config.sceneCapture = true;
+        config.spatialMesh = true;
+        config.planeDetection = true;
+        config.mrSafeguard = true;
+        config.meshLod = PxrMeshLod.Low;
+        PXR_ProjectSetting.SaveAssets();
+    }
+
+    private static void ConfigureVirtualRealityProjectSettings()
+    {
+        var config = PXR_ProjectSetting.GetProjectConfig();
+        if (config == null) return;
+
+        config.openMRC = false;
+        config.videoSeeThrough = false;
+        config.spatialAnchor = false;
+        config.sceneCapture = false;
+        config.spatialMesh = false;
+        config.planeDetection = false;
+        config.mrSafeguard = false;
+        PXR_ProjectSetting.SaveAssets();
     }
 
     private static void EnsureFolderPath(string path)
@@ -510,8 +627,10 @@ public static class PingPongDemoSceneBuilder
 
     private static void SetupFeedbackAudio(GameObject feedback, HitFeedbackManager feedbackManager)
     {
-        var clip = AssetDatabase.LoadAssetAtPath<AudioClip>($"{OriginalAudioRoot}/single_bounce.mp3");
-        if (clip == null || feedbackManager == null) return;
+        if (feedbackManager == null) return;
+
+        var bounceClip = AssetDatabase.LoadAssetAtPath<AudioClip>($"{OriginalAudioRoot}/single_bounce.mp3");
+        var whooshClip = AssetDatabase.LoadAssetAtPath<AudioClip>($"{OriginalAudioRoot}/ping_pong_whoosh.mp3");
 
         var source = feedbackManager.hitAudioSource;
         if (source == null)
@@ -520,10 +639,28 @@ public static class PingPongDemoSceneBuilder
         }
 
         if (source == null) return;
-        source.clip = clip;
+        source.clip = bounceClip;
         source.playOnAwake = false;
         source.spatialBlend = 1f;
         feedbackManager.hitAudioSource = source;
+        feedbackManager.paddleHitClip = bounceClip;
+        feedbackManager.tableBounceClip = bounceClip;
+        feedbackManager.netBounceClip = bounceClip;
+        feedbackManager.fastSwingClip = whooshClip;
+        feedbackManager.minAudibleSpeed = 0.25f;
+        feedbackManager.fullVolumeSpeed = 8f;
+        feedbackManager.fastSwingSpeed = 5.2f;
+        feedbackManager.fastSwingVolume = 0.28f;
+
+        var bounceObject = GetOrCreateChild("BounceAudioSource", feedback.transform);
+        var bounceSource = EnsureComponent<AudioSource>(bounceObject);
+        if (bounceSource != null)
+        {
+            bounceSource.clip = bounceClip;
+            bounceSource.playOnAwake = false;
+            bounceSource.spatialBlend = 1f;
+            feedbackManager.bounceAudioSource = bounceSource;
+        }
     }
 
     private static GameObject LoadOrCreatePrefabAsset(string assetName, PrimitiveType primitiveType, Vector3 scale, Material material)
@@ -599,11 +736,13 @@ public static class PingPongDemoSceneBuilder
 
         ball.transform.localScale = PingPongGeometry.BallPrefabScale;
         rb.mass = PingPongGeometry.BallMass;
-        rb.drag = PingPongGeometry.BallDrag;
+        var pingPongBall = EnsureComponent<PingPongBall>(ball);
+        rb.drag = pingPongBall != null && pingPongBall.useAerodynamics ? 0f : PingPongGeometry.BallDrag;
         rb.angularDrag = PingPongGeometry.BallAngularDrag;
         rb.useGravity = true;
         rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
+        PingPongBall.ConfigureSpinLimit(rb, pingPongBall != null ? pingPongBall.maxAngularVelocity : PingPongBall.DefaultMaxAngularVelocity);
 
         var collider = EnsureComponent<SphereCollider>(ball);
         if (collider != null)
@@ -612,7 +751,6 @@ public static class PingPongDemoSceneBuilder
             collider.isTrigger = false;
         }
 
-        EnsureComponent<PingPongBall>(ball);
         EnsureComponent<BallLifetime>(ball);
     }
 
@@ -620,13 +758,35 @@ public static class PingPongDemoSceneBuilder
     {
         if (AssetDatabase.LoadAssetAtPath<GameObject>(path) == null) return;
 
+        var previousScene = UnityEngine.SceneManagement.SceneManager.GetActiveScene();
         var root = PrefabUtility.LoadPrefabContents(path);
         if (root == null) return;
 
-        ConfigureBallComponents(root);
-        AttachBounceAudio(root);
-        PrefabUtility.SaveAsPrefabAsset(root, path);
-        PrefabUtility.UnloadPrefabContents(root);
+        try
+        {
+            ConfigureBallComponents(root);
+            AttachBounceAudio(root);
+            PrefabUtility.SaveAsPrefabAsset(root, path);
+        }
+        finally
+        {
+            PrefabUtility.UnloadPrefabContents(root);
+            RestoreActiveScene(previousScene);
+        }
+    }
+
+    private static void RestoreActiveScene(UnityEngine.SceneManagement.Scene previousScene)
+    {
+        if (!previousScene.IsValid()) return;
+
+        if (previousScene.isLoaded)
+        {
+            UnityEngine.SceneManagement.SceneManager.SetActiveScene(previousScene);
+        }
+        else if (!string.IsNullOrEmpty(previousScene.path))
+        {
+            UnityEditor.SceneManagement.EditorSceneManager.OpenScene(previousScene.path, UnityEditor.SceneManagement.OpenSceneMode.Single);
+        }
     }
 
     private static void RepairExistingBallObjectsInScene()
@@ -862,10 +1022,14 @@ public static class PingPongDemoSceneBuilder
         var rb = EnsureComponent<Rigidbody>(table);
         if (rb != null)
         {
+            if (!rb.isKinematic)
+            {
+                rb.velocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+
             rb.isKinematic = true;
             rb.useGravity = false;
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
             rb.constraints = RigidbodyConstraints.FreezeAll;
         }
@@ -1021,9 +1185,12 @@ public static class PingPongDemoSceneBuilder
         EnsureComponent<CanvasScaler>(canvasGo);
         EnsureComponent<GraphicRaycaster>(canvasGo);
 
-        score.hitText = CreateScoreText(canvasGo.transform, "HitText", new Vector2(0f, 90f));
-        score.servedText = CreateScoreText(canvasGo.transform, "ServedText", new Vector2(0f, 0f));
-        score.accuracyText = CreateScoreText(canvasGo.transform, "AccuracyText", new Vector2(0f, -90f));
+        score.hitText = CreateScoreText(canvasGo.transform, "HitText", new Vector2(0f, 150f));
+        score.servedText = CreateScoreText(canvasGo.transform, "ServedText", new Vector2(0f, 90f));
+        score.missedText = CreateScoreText(canvasGo.transform, "MissedText", new Vector2(0f, 30f));
+        score.accuracyText = CreateScoreText(canvasGo.transform, "AccuracyText", new Vector2(0f, -30f));
+        score.lastSpeedText = CreateScoreText(canvasGo.transform, "LastSpeedText", new Vector2(0f, -90f));
+        score.lastSpinText = CreateScoreText(canvasGo.transform, "LastSpinText", new Vector2(0f, -150f));
     }
 
     private static TMP_Text CreateScoreText(Transform canvasTransform, string name, Vector2 position)
@@ -1033,9 +1200,9 @@ public static class PingPongDemoSceneBuilder
         if (text == null) return null;
 
         var rect = go.GetComponent<RectTransform>();
-        rect.sizeDelta = new Vector2(450f, 100f);
+        rect.sizeDelta = new Vector2(560f, 72f);
         rect.anchoredPosition = position;
-        text.fontSize = 64;
+        text.fontSize = 48;
         text.color = Color.white;
         return text;
     }
@@ -1117,15 +1284,17 @@ public static class PingPongDemoSceneBuilder
 
         limiter.tableTransform = tableTransform;
         limiter.tableSize = new Vector2(PingPongGeometry.TableWidth, PingPongGeometry.TableLength);
-        limiter.tableTopY = PingPongGeometry.TableTopHeight;
+        limiter.tableTopY = tableTransform != null
+            ? tableTransform.position.y + PingPongGeometry.TableThickness * 0.5f
+            : PingPongGeometry.TableTopHeight;
         limiter.horizontalMargin = 0.04f;
         limiter.verticalMargin = 0.03f;
         EditorUtility.SetDirty(controllerVisual);
     }
 
-    private static void SetupTableDragHandle(Transform parent, GameObject table, Transform leftController, ControllerBallGrabber leftBallGrabber, BallSpawner spawner, Transform spawn, Transform target, Transform tableBlocker)
+    private static TableDragHandle SetupTableDragHandle(Transform parent, GameObject table, Transform leftController, ControllerBallGrabber leftBallGrabber, BallSpawner spawner, Transform spawn, Transform target, Transform tableBlocker, bool mixedRealityPlacement, params Transform[] extraSyncedTransforms)
     {
-        if (table == null) return;
+        if (table == null) return null;
 
         var handle = GetOrCreate("LeftTableDragHandle", parent);
         handle.transform.SetParent(table.transform, false);
@@ -1152,14 +1321,19 @@ public static class PingPongDemoSceneBuilder
             dragHandle.controllerTransform = leftController;
             dragHandle.controllerNode = XRNode.LeftHand;
             dragHandle.ballGrabber = leftBallGrabber;
-            dragHandle.syncedTransforms = new[] { spawn, target, tableBlocker };
+            dragHandle.syncedTransforms = BuildSyncedTransformList(spawn, target, tableBlocker, extraSyncedTransforms);
             dragHandle.syncedSpawners = spawner != null ? new[] { spawner } : null;
             dragHandle.activationRadius = 0.2f;
             dragHandle.tableBounceLocalZ = tableBounceLocalZ;
+            dragHandle.minimumNetClearanceAboveNet = 0.08f;
             dragHandle.lockTableHeight = true;
             dragHandle.constrainToBounds = true;
-            dragHandle.xBounds = new Vector2(-1.5f, 1.5f);
-            dragHandle.zBounds = new Vector2(0.55f, 3.8f);
+            dragHandle.xBounds = mixedRealityPlacement ? new Vector2(-3f, 3f) : new Vector2(-1.5f, 1.5f);
+            dragHandle.zBounds = mixedRealityPlacement ? new Vector2(0.35f, 4.5f) : new Vector2(0.55f, 3.8f);
+            dragHandle.loadSavedPlacementOnEnable = mixedRealityPlacement;
+            dragHandle.savePlacementOnRelease = mixedRealityPlacement;
+            dragHandle.placementSaveKey = "PingPong.MixedReality.Table";
+            dragHandle.syncedControllerLimiters = Object.FindObjectsOfType<ControllerTableCollisionLimiter>(true);
 
             if (spawner != null)
             {
@@ -1168,6 +1342,8 @@ public static class PingPongDemoSceneBuilder
                 spawner.tableBounceWorldZ = table.transform.position.z + tableBounceLocalZ;
                 EditorUtility.SetDirty(spawner);
             }
+
+            dragHandle.SyncHeightDependentValues();
         }
 
         var passiveLock = EnsureComponent<TablePassiveMotionLock>(table);
@@ -1179,9 +1355,27 @@ public static class PingPongDemoSceneBuilder
         }
 
         EditorUtility.SetDirty(handle);
+        return dragHandle;
     }
 
-    private static void SetupInitialViewAligner(Transform parent)
+    private static Transform[] BuildSyncedTransformList(Transform spawn, Transform target, Transform tableBlocker, Transform[] extraSyncedTransforms)
+    {
+        var transforms = new List<Transform> { spawn, target, tableBlocker };
+        if (extraSyncedTransforms != null)
+        {
+            foreach (var syncedTransform in extraSyncedTransforms)
+            {
+                if (syncedTransform != null)
+                {
+                    transforms.Add(syncedTransform);
+                }
+            }
+        }
+
+        return transforms.ToArray();
+    }
+
+    private static void SetupInitialViewAligner(Transform parent, bool mixedRealityMode = false)
     {
         var alignerObject = GetOrCreate("InitialViewAligner", parent);
         var aligner = EnsureComponent<VrInitialViewAligner>(alignerObject);
@@ -1189,42 +1383,315 @@ public static class PingPongDemoSceneBuilder
 
         aligner.desiredHeadWorldPosition = new Vector3(0f, 1.6f, 0.25f);
         aligner.lookAtWorldPosition = new Vector3(0f, PingPongGeometry.TableTopHeight + 0.35f, PingPongGeometry.TableCenter.z);
-        aligner.alignOnStart = true;
-        aligner.alignPosition = true;
+        aligner.alignOnStart = !mixedRealityMode;
+        aligner.alignPosition = !mixedRealityMode;
         EditorUtility.SetDirty(alignerObject);
+    }
+
+    private static void SetupMixedRealityMode(Transform managers, Transform environment, Transform table, TableDragHandle dragHandle)
+    {
+        var mrObject = GetOrCreate("MixedRealityManager", managers);
+        var mrManager = EnsureComponent<PingPongMixedRealityManager>(mrObject);
+        if (mrManager != null)
+        {
+            mrManager.enableOnStart = true;
+            mrManager.enableVideoSeeThrough = true;
+            mrManager.configureTransparentCamera = true;
+            mrManager.disableVirtualEnvironment = true;
+            mrManager.targetCamera = Camera.main;
+            mrManager.virtualEnvironmentObjects = CollectVirtualEnvironmentObjects(environment);
+            EditorUtility.SetDirty(mrObject);
+        }
+
+        var alignerObject = GetOrCreate("RoomPlaneAligner", managers);
+        var roomAligner = EnsureComponent<PingPongRoomPlaneAligner>(alignerObject);
+        if (roomAligner != null)
+        {
+            roomAligner.tableRoot = table;
+            roomAligner.tableDragHandle = dragHandle;
+            roomAligner.autoStartPlaneDetection = true;
+            roomAligner.autoAlignTableHeightToFloor = true;
+            roomAligner.alignOnlyOnce = true;
+            roomAligner.savePlacementAfterFloorAlignment = true;
+            roomAligner.tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
+            roomAligner.maximumFloorDistance = 3f;
+            EditorUtility.SetDirty(alignerObject);
+        }
+
+        SetupPicoRoomSensingManagers(managers);
+        ConfigureMainCameraForPassthrough();
+    }
+
+    private static void SetupPicoRoomSensingManagers(Transform managers)
+    {
+        var sensingRoot = GetOrCreate("MRSpaceSensing", managers);
+        sensingRoot.transform.localPosition = Vector3.zero;
+        sensingRoot.transform.localRotation = Quaternion.identity;
+        sensingRoot.transform.localScale = Vector3.one;
+
+        var planeTemplate = SetupRoomSensingTemplate(
+            sensingRoot.transform,
+            "MRDetectedPlaneTemplate",
+            CreateOrLoadTransparentMaterial("MRDetectedPlaneCyan", new Color(0.15f, 0.85f, 1f, 0.22f)));
+        var planeManager = EnsureComponent<PXR_PlaneDetectionManager>(sensingRoot);
+        if (planeManager != null)
+        {
+            planeManager.planePrefab = planeTemplate;
+        }
+
+        var meshTemplate = SetupRoomSensingTemplate(
+            sensingRoot.transform,
+            "MRSpatialMeshTemplate",
+            CreateOrLoadTransparentMaterial("MRSpatialMeshBlue", new Color(0.25f, 0.5f, 1f, 0.12f)));
+        var meshManager = EnsureComponent<PXR_SpatialMeshManager>(sensingRoot);
+        if (meshManager != null)
+        {
+            meshManager.meshPrefab = meshTemplate;
+        }
+
+        EditorUtility.SetDirty(sensingRoot);
+    }
+
+    private static GameObject SetupRoomSensingTemplate(Transform parent, string name, Material material)
+    {
+        var template = GetOrCreateChild(name, parent);
+        template.transform.localPosition = Vector3.zero;
+        template.transform.localRotation = Quaternion.identity;
+        template.transform.localScale = Vector3.one;
+
+        EnsureComponent<MeshFilter>(template);
+        var renderer = EnsureComponent<MeshRenderer>(template);
+        if (renderer != null)
+        {
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        template.SetActive(false);
+        EditorUtility.SetDirty(template);
+        return template;
+    }
+
+    private static Material CreateOrLoadTransparentMaterial(string materialName, Color color)
+    {
+        var material = CreateOrLoadMaterial(materialName, color);
+        if (material == null) return null;
+
+        material.color = color;
+        if (material.HasProperty("_Surface"))
+        {
+            material.SetFloat("_Surface", 1f);
+        }
+
+        if (material.HasProperty("_Mode"))
+        {
+            material.SetFloat("_Mode", 3f);
+        }
+
+        if (material.HasProperty("_BaseColor"))
+        {
+            material.SetColor("_BaseColor", color);
+        }
+
+        material.SetOverrideTag("RenderType", "Transparent");
+        material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        material.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        material.SetInt("_ZWrite", 0);
+        material.DisableKeyword("_ALPHATEST_ON");
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.EnableKeyword("_ALPHABLEND_ON");
+        material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+        EditorUtility.SetDirty(material);
+        return material;
+    }
+
+    private static void ConfigureMainCameraForPassthrough()
+    {
+        var camera = Camera.main ?? Object.FindObjectOfType<Camera>();
+        if (camera == null) return;
+
+        camera.clearFlags = CameraClearFlags.SolidColor;
+        var clearColor = camera.backgroundColor;
+        clearColor.a = 0f;
+        camera.backgroundColor = clearColor;
+        EditorUtility.SetDirty(camera);
+    }
+
+    private static void ConfigureMainCameraForVirtualReality()
+    {
+        var camera = FindMainCameraIncludingInactive();
+        if (camera == null) return;
+
+        camera.clearFlags = CameraClearFlags.Skybox;
+        var clearColor = camera.backgroundColor;
+        clearColor.a = 1f;
+        camera.backgroundColor = clearColor;
+        EditorUtility.SetDirty(camera);
+    }
+
+    private static Camera FindMainCameraIncludingInactive()
+    {
+        var camera = Camera.main;
+        if (camera != null) return camera;
+
+        var cameras = Object.FindObjectsOfType<Camera>(true);
+        foreach (var candidate in cameras)
+        {
+            if (candidate != null && candidate.CompareTag("MainCamera"))
+            {
+                return candidate;
+            }
+        }
+
+        return cameras.Length > 0 ? cameras[0] : null;
+    }
+
+    private static GameObject[] CollectVirtualEnvironmentObjects(Transform environment)
+    {
+        var objects = new List<GameObject>();
+        AddNamedEnvironmentObject(objects, "Floor", environment);
+        AddNamedEnvironmentObject(objects, "BackWall", environment);
+        return objects.ToArray();
+    }
+
+    private static void AddNamedEnvironmentObject(List<GameObject> objects, string name, Transform environment)
+    {
+        var go = FindObjectByNameIncludingInactive(name, environment);
+
+        if (go != null && !objects.Contains(go))
+        {
+            objects.Add(go);
+        }
+    }
+
+    private static void DisableMixedRealitySceneState()
+    {
+        DestroyNamedObjectsIncludingInactive("MixedRealityManager", "RoomPlaneAligner", "MRSpaceSensing");
+        RemoveSceneComponents<PingPongMixedRealityManager>();
+        RemoveSceneComponents<PingPongRoomPlaneAligner>();
+        RemoveSceneComponents<PXR_PlaneDetectionManager>();
+        RemoveSceneComponents<PXR_SpatialMeshManager>();
+    }
+
+    private static void DestroyNamedObjectsIncludingInactive(params string[] names)
+    {
+        var targets = new List<GameObject>();
+        foreach (var transform in Object.FindObjectsOfType<Transform>(true))
+        {
+            if (transform == null) continue;
+
+            foreach (var name in names)
+            {
+                if (transform.name != name) continue;
+
+                targets.Add(transform.gameObject);
+                break;
+            }
+        }
+
+        foreach (var target in targets)
+        {
+            if (target != null)
+            {
+                Object.DestroyImmediate(target);
+            }
+        }
+    }
+
+    private static void RemoveSceneComponents<T>() where T : Component
+    {
+        foreach (var component in Object.FindObjectsOfType<T>(true))
+        {
+            if (component != null)
+            {
+                Object.DestroyImmediate(component);
+            }
+        }
+    }
+
+    private static void DisableVirtualRoomSurfaces(Transform environment)
+    {
+        var floor = GetOrCreateSingleEnvironmentSurface("Floor", environment, PrimitiveType.Plane);
+        floor.transform.SetParent(environment);
+        floor.SetActive(false);
+
+        var backWall = GetOrCreateSingleEnvironmentSurface("BackWall", environment, PrimitiveType.Cube);
+        backWall.transform.SetParent(environment);
+        backWall.SetActive(false);
+        EditorUtility.SetDirty(floor);
+        EditorUtility.SetDirty(backWall);
+    }
+
+    private static GameObject GetOrCreateSingleEnvironmentSurface(string name, Transform environment, PrimitiveType fallbackPrimitive)
+    {
+        GameObject primary = null;
+        var duplicates = new List<GameObject>();
+
+        foreach (var transform in Object.FindObjectsOfType<Transform>(true))
+        {
+            if (transform.name != name) continue;
+
+            if (primary == null || (environment != null && transform.parent == environment))
+            {
+                if (primary != null)
+                {
+                    duplicates.Add(primary);
+                }
+
+                primary = transform.gameObject;
+            }
+            else
+            {
+                duplicates.Add(transform.gameObject);
+            }
+        }
+
+        foreach (var duplicate in duplicates)
+        {
+            if (duplicate != null && duplicate != primary)
+            {
+                Object.DestroyImmediate(duplicate);
+            }
+        }
+
+        if (primary != null) return primary;
+
+        primary = GameObject.CreatePrimitive(fallbackPrimitive);
+        primary.name = name;
+        return primary;
+    }
+
+    private static GameObject FindObjectByNameIncludingInactive(string name, Transform preferredParent)
+    {
+        GameObject fallback = null;
+        foreach (var transform in Object.FindObjectsOfType<Transform>(true))
+        {
+            if (transform.name != name) continue;
+            if (preferredParent != null && transform.parent == preferredParent)
+            {
+                return transform.gameObject;
+            }
+
+            if (fallback == null)
+            {
+                fallback = transform.gameObject;
+            }
+        }
+
+        return fallback;
     }
 
     private static void EnsureFloor(Transform parent)
     {
-        var namedFloor = GameObject.Find("Floor");
-        if (namedFloor != null)
-        {
-            namedFloor.transform.SetParent(parent);
-            namedFloor.transform.position = Vector3.zero;
-            namedFloor.transform.localScale = Vector3.one * 3f;
-            if (namedFloor.GetComponent<Collider>() == null) namedFloor.AddComponent<MeshCollider>();
-            ConfigureSurface(namedFloor, PingPongSurfaceType.Floor);
-            EditorUtility.SetDirty(namedFloor);
-            return;
-        }
-
-        foreach (var collider in Object.FindObjectsOfType<Collider>())
-        {
-            var n = collider.gameObject.name.ToLowerInvariant();
-            if (n.Contains("floor") || n.Contains("ground") || n.Contains("plane"))
-            {
-                collider.transform.SetParent(parent);
-                ConfigureSurface(collider.gameObject, PingPongSurfaceType.Floor);
-                EditorUtility.SetDirty(collider.gameObject);
-                return;
-            }
-        }
-
-        var floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        var floor = GetOrCreateSingleEnvironmentSurface("Floor", parent, PrimitiveType.Plane);
         floor.name = "Floor";
         floor.transform.SetParent(parent);
         floor.transform.position = Vector3.zero;
+        floor.transform.rotation = Quaternion.identity;
         floor.transform.localScale = Vector3.one * 3f;
+        floor.SetActive(true);
+        EnsureEnvironmentSurfaceCollider(floor, false);
         ConfigureSurface(floor, PingPongSurfaceType.Floor);
         EditorUtility.SetDirty(floor);
     }
@@ -1269,11 +1736,36 @@ public static class PingPongDemoSceneBuilder
 
     private static void EnsureBackWall(Transform parent)
     {
-        var backWall = GameObject.Find("BackWall") ?? GameObject.CreatePrimitive(PrimitiveType.Cube);
+        var backWall = GetOrCreateSingleEnvironmentSurface("BackWall", parent, PrimitiveType.Cube);
         backWall.name = "BackWall";
         backWall.transform.SetParent(parent);
         backWall.transform.position = new Vector3(0f, 1.5f, 4.2f);
+        backWall.transform.rotation = Quaternion.identity;
         backWall.transform.localScale = new Vector3(6f, 3f, 0.05f);
+        backWall.SetActive(true);
+        EnsureEnvironmentSurfaceCollider(backWall, true);
+        EditorUtility.SetDirty(backWall);
+    }
+
+    private static void EnsureEnvironmentSurfaceCollider(GameObject surface, bool preferBoxCollider)
+    {
+        if (surface == null || surface.GetComponent<Collider>() != null) return;
+
+        if (preferBoxCollider)
+        {
+            surface.AddComponent<BoxCollider>();
+            return;
+        }
+
+        var meshFilter = surface.GetComponent<MeshFilter>();
+        if (meshFilter != null && meshFilter.sharedMesh != null)
+        {
+            surface.AddComponent<MeshCollider>();
+            return;
+        }
+
+        var fallback = surface.AddComponent<BoxCollider>();
+        fallback.size = new Vector3(1f, 0.02f, 1f);
     }
 
     private static GameObject GetOrCreate(string name, Transform parent = null)

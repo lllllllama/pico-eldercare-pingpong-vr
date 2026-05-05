@@ -52,10 +52,14 @@ public class TablePassiveMotionLock : MonoBehaviour
 
         if (_rigidbody == null) return;
 
+        if (!_rigidbody.isKinematic)
+        {
+            _rigidbody.velocity = Vector3.zero;
+            _rigidbody.angularVelocity = Vector3.zero;
+        }
+
         _rigidbody.isKinematic = true;
         _rigidbody.useGravity = false;
-        _rigidbody.velocity = Vector3.zero;
-        _rigidbody.angularVelocity = Vector3.zero;
         _rigidbody.constraints = RigidbodyConstraints.FreezeAll;
     }
 }

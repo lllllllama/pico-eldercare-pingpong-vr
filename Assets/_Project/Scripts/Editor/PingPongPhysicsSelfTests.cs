@@ -11,6 +11,9 @@ public static class PingPongPhysicsSelfTests
         TableBounceReflectsUpward();
         SolverClampsMaximumSpeed();
         ContactPlacementChangesLateralDirection();
+        ServeProfilesCreateOppositeSpin();
+        AerodynamicsDragAndTopspinAreDirectional();
+        RigidbodySpinLimitCoversServeSpin();
         Debug.Log("PingPong physics self tests passed.");
     }
 
@@ -66,6 +69,55 @@ public static class PingPongPhysicsSelfTests
         var velocity = PingPongHitSolver.ApplyPaddleContactPlacement(Vector3.forward * 4f, new Vector3(0.12f, 0f, 0f), 1.15f, 0.35f);
         AssertTrue(velocity.x < -0.01f, "Right-side contact should add leftward lateral direction.");
         AssertTrue(Mathf.Abs(velocity.magnitude - 4f) < 0.001f, "Contact placement should preserve speed.");
+    }
+
+    private static void ServeProfilesCreateOppositeSpin()
+    {
+        var launchVelocity = Vector3.back * 3f;
+        var topspin = BallSpawner.CalculateProfileSpin(PingPongServeProfile.Topspin, launchVelocity, 95f, 80f, 50f);
+        var backspin = BallSpawner.CalculateProfileSpin(PingPongServeProfile.Backspin, launchVelocity, 95f, 80f, 50f);
+
+        AssertTrue(topspin.sqrMagnitude > 1f, "Topspin serve should create angular velocity.");
+        AssertTrue(backspin.sqrMagnitude > 1f, "Backspin serve should create angular velocity.");
+        AssertTrue(Vector3.Dot(topspin.normalized, backspin.normalized) < -0.99f, "Topspin and backspin should use opposite spin axes.");
+    }
+
+    private static void AerodynamicsDragAndTopspinAreDirectional()
+    {
+        var velocity = Vector3.back * 6f;
+        var topspin = BallSpawner.CalculateProfileSpin(PingPongServeProfile.Topspin, velocity, 95f, 80f, 50f);
+        var acceleration = PingPongBall.CalculateAerodynamicAcceleration(
+            velocity,
+            topspin,
+            PingPongGeometry.BallRadius,
+            PingPongGeometry.BallMass,
+            1.27f,
+            0.5f,
+            0.28f,
+            45f);
+
+        AssertTrue(Vector3.Dot(acceleration, velocity) < 0f, "Aerodynamic drag should oppose ball velocity.");
+        AssertTrue(acceleration.y < 0f, "Topspin moving toward the player should add downward Magnus acceleration.");
+    }
+
+    private static void RigidbodySpinLimitCoversServeSpin()
+    {
+        var ballObject = new GameObject("SpinLimitTestBall");
+        try
+        {
+            var rb = ballObject.AddComponent<Rigidbody>();
+            rb.maxAngularVelocity = 7f;
+            PingPongBall.ConfigureSpinLimit(rb, 140f);
+            AssertTrue(rb.maxAngularVelocity >= PingPongBall.DefaultMaxAngularVelocity, "Spin limit should cover the 180 rad/s ball spin clamp.");
+
+            rb.maxAngularVelocity = 7f;
+            PingPongBall.ConfigureSpinLimit(rb, 240f);
+            AssertTrue(rb.maxAngularVelocity >= 240f, "Spin limit should cover configured serve spin values above the default clamp.");
+        }
+        finally
+        {
+            Object.DestroyImmediate(ballObject);
+        }
     }
 
     private static void AssertTrue(bool condition, string message)
