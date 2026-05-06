@@ -146,8 +146,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7499c392712d7084a94986fb9aacf148, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   paddleVelocityMultiplier: 0.85
   forwardBoost: 2.2
   upwardBoost: 0.25
@@ -180,8 +180,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e534f6e269fbcc94ebc529ad970ac8fa, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   minY: -1
   maxDistanceFromOrigin: 20
   maxLifeSeconds: 15
