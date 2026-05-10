@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.XR;
 using Unity.XR.PXR;
 
 [DefaultExecutionOrder(-40)]
@@ -37,7 +38,14 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
 #if UNITY_ANDROID && !UNITY_EDITOR
     private async void StartPlaneDetectionAsync()
     {
-        await PXR_MixedReality.StartSenseDataProvider(PxrSenseDataProviderType.PlaneDetection);
+        try
+        {
+            await PXR_MixedReality.StartSenseDataProvider(PxrSenseDataProviderType.PlaneDetection);
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"PingPong MR plane detection failed to start. {ex.GetType().Name}: {ex.Message}");
+        }
     }
 #endif
 
@@ -190,7 +198,7 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
 
     private static bool IsUsableFloorPlane(PxrPlaneData plane)
     {
-        if (plane.state.ToString() == "Removed") return false;
+        if (plane.state == MeshChangeState.Removed) return false;
         if (plane.label == PxrSemanticLabel.Floor) return true;
 
         return plane.label == PxrSemanticLabel.Unknown &&

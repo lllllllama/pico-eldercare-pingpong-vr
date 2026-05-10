@@ -69,8 +69,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 226634b47ece4f4394e85040f6ffaa41, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   surfaceType: 3
   normalRestitution: 0.72
   tangentialFriction: 0.45
@@ -113,8 +113,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: bc1d5173c91b0314a9d93baadce31f54, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   controllerTransform: {fileID: 0}
   positionOffset: {x: 0, y: 0, z: 0}
   rotationOffsetEuler: {x: 0, y: 0, z: 0}
@@ -128,8 +128,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dfb34f5ce79ea7f469d42fc71376220e, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   autoAlignColliders: 1
   bodyColliderCenter: {x: 0, y: 0, z: 0.16}
   bodyColliderSize: {x: 0.2, y: 0.04, z: 0.32}
@@ -202,8 +202,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 226634b47ece4f4394e85040f6ffaa41, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
+  m_Name: 
+  m_EditorClassIdentifier: 
   surfaceType: 4
   normalRestitution: 0.78
   tangentialFriction: 0.58
@@ -275,23 +275,23 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 2300000, guid: 6f81d17ce2a4146e28e18f768d3dce55, type: 3}
       propertyPath: m_Materials.Array.data[0]
-      value:
+      value: 
       objectReference: {fileID: 2100000, guid: aca5859879fff474ab022a6f700861f7, type: 2}
     - target: {fileID: 2300000, guid: 6f81d17ce2a4146e28e18f768d3dce55, type: 3}
       propertyPath: m_Materials.Array.data[1]
-      value:
+      value: 
       objectReference: {fileID: 2100000, guid: aca5859879fff474ab022a6f700861f7, type: 2}
     - target: {fileID: 2300000, guid: 6f81d17ce2a4146e28e18f768d3dce55, type: 3}
       propertyPath: m_Materials.Array.data[2]
-      value:
+      value: 
       objectReference: {fileID: 2100000, guid: aca5859879fff474ab022a6f700861f7, type: 2}
     - target: {fileID: 2300000, guid: 6f81d17ce2a4146e28e18f768d3dce55, type: 3}
       propertyPath: m_Materials.Array.data[3]
-      value:
+      value: 
       objectReference: {fileID: 2100000, guid: e68cba1ed017deb40a7f3ec7e9c0c7f5, type: 2}
     - target: {fileID: 2300000, guid: 6f81d17ce2a4146e28e18f768d3dce55, type: 3}
       propertyPath: m_Materials.Array.data[4]
-      value:
+      value: 
       objectReference: {fileID: 2100000, guid: e68cba1ed017deb40a7f3ec7e9c0c7f5, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
