@@ -17,14 +17,14 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
 
     private bool _alignedToFloor;
 
-    private async void Start()
+    private void Start()
     {
         ResolveReferences();
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (autoStartPlaneDetection)
         {
-            await PXR_MixedReality.StartSenseDataProvider(PxrSenseDataProviderType.PlaneDetection);
+            StartPlaneDetectionAsync();
         }
 #else
         if (autoStartPlaneDetection)
@@ -33,6 +33,13 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
         }
 #endif
     }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+    private async void StartPlaneDetectionAsync()
+    {
+        await PXR_MixedReality.StartSenseDataProvider(PxrSenseDataProviderType.PlaneDetection);
+    }
+#endif
 
     private void OnEnable()
     {
@@ -183,7 +190,7 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
 
     private static bool IsUsableFloorPlane(PxrPlaneData plane)
     {
-        if (plane.state == MeshChangeState.Removed) return false;
+        if (plane.state.ToString() == "Removed") return false;
         if (plane.label == PxrSemanticLabel.Floor) return true;
 
         return plane.label == PxrSemanticLabel.Unknown &&
