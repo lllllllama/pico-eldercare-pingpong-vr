@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR;
 
+[DefaultExecutionOrder(-60)]
 public class ControllerBallGrabber : MonoBehaviour
 {
     public Transform controllerTransform;
@@ -15,6 +16,7 @@ public class ControllerBallGrabber : MonoBehaviour
     public LayerMask grabLayers = ~0;
     public Vector3 holdOffset = new Vector3(0f, 0f, 0.08f);
     public GrabHandPoseAnimator handPoseAnimator;
+    public SimpleGripInteractionState interactionState;
     public bool suppressGrab;
 
     private readonly Collider[] _grabCandidates = new Collider[64];
@@ -39,6 +41,7 @@ public class ControllerBallGrabber : MonoBehaviour
         _nextHandPoseSearchTime = 0f;
         _waitForGripReleaseBeforeGrab = false;
         _wasGripPressed = false;
+        ResolveInteractionState();
         TryBindHandPoseAnimator();
     }
 
@@ -46,21 +49,24 @@ public class ControllerBallGrabber : MonoBehaviour
     {
         UpdateControllerVelocity();
         TryBindHandPoseAnimator();
+        ResolveInteractionState();
 
         var gripPressed = IsGripPressed();
+        suppressGrab = SimpleGripInteractionState.CurrentMode == SimpleGripInteractionMode.RemoteTableDrag;
         if (!gripPressed)
         {
             _waitForGripReleaseBeforeGrab = false;
         }
 
-        if (gripPressed && !suppressGrab && !_waitForGripReleaseBeforeGrab && _grabbedBall == null && Time.time >= _nextGrabScanTime)
+        if (gripPressed && _grabbedBall == null && Time.time >= _nextGrabScanTime)
         {
             _nextGrabScanTime = Time.time + grabScanInterval;
-            TryGrabNearestBall();
+            TryBeginBallGrabFromGrip();
         }
         else if (!gripPressed && _wasGripPressed)
         {
             ReleaseBall();
+            EndBallGrabState();
         }
 
         if (_grabbedBall != null)
@@ -74,14 +80,82 @@ public class ControllerBallGrabber : MonoBehaviour
     private void OnDisable()
     {
         ReleaseBall();
+        EndBallGrabState();
     }
 
-    private void TryGrabNearestBall()
+    public bool HasNearbyGrabbableBall()
     {
-        if (controllerTransform == null || _grabbedBall != null) return;
+        return CanGrabBall();
+    }
 
-        PingPongBall nearest = null;
-        var nearestDistance = grabRadius;
+    public bool CanGrabBall()
+    {
+        return TryFindNearestGrabbableBall(out _, out _);
+    }
+
+    private void TryBeginBallGrabFromGrip()
+    {
+        if (suppressGrab || _waitForGripReleaseBeforeGrab)
+        {
+            return;
+        }
+
+        var currentMode = SimpleGripInteractionState.CurrentMode;
+        if (currentMode != SimpleGripInteractionMode.None)
+        {
+            if (!_wasGripPressed)
+            {
+                SimpleGripInteractionState.LogGripIgnored(currentMode);
+            }
+
+            return;
+        }
+
+        if (!CanGrabBall())
+        {
+            return;
+        }
+
+        if (!SimpleGripInteractionState.TryBegin(interactionState, SimpleGripInteractionMode.BallGrab))
+        {
+            return;
+        }
+
+        if (!TryGrabNearestBall())
+        {
+            SimpleGripInteractionState.End(interactionState, SimpleGripInteractionMode.BallGrab);
+        }
+    }
+
+    private bool TryGrabNearestBall()
+    {
+        if (!TryFindNearestGrabbableBall(out var nearest, out _)) return false;
+
+        _grabbedBall = nearest;
+        _grabbedRigidbody = nearest.GetComponent<Rigidbody>();
+        _originalParent = nearest.transform.parent;
+
+        if (_grabbedRigidbody != null)
+        {
+            _grabbedRigidbody.velocity = Vector3.zero;
+            _grabbedRigidbody.angularVelocity = Vector3.zero;
+            _grabbedRigidbody.useGravity = false;
+            _grabbedRigidbody.isKinematic = true;
+        }
+
+        nearest.SetGrabber(this);
+        nearest.transform.SetParent(controllerTransform, false);
+        nearest.transform.localPosition = holdOffset;
+        nearest.transform.localRotation = Quaternion.identity;
+        return true;
+    }
+
+    private bool TryFindNearestGrabbableBall(out PingPongBall nearest, out float nearestDistance)
+    {
+        nearest = null;
+        nearestDistance = grabRadius;
+        if (controllerTransform == null || _grabbedBall != null) return false;
+
         var count = Physics.OverlapSphereNonAlloc(
             controllerTransform.position,
             grabRadius,
@@ -105,24 +179,7 @@ public class ControllerBallGrabber : MonoBehaviour
             }
         }
 
-        if (nearest == null) return;
-
-        _grabbedBall = nearest;
-        _grabbedRigidbody = nearest.GetComponent<Rigidbody>();
-        _originalParent = nearest.transform.parent;
-
-        if (_grabbedRigidbody != null)
-        {
-            _grabbedRigidbody.velocity = Vector3.zero;
-            _grabbedRigidbody.angularVelocity = Vector3.zero;
-            _grabbedRigidbody.useGravity = false;
-            _grabbedRigidbody.isKinematic = true;
-        }
-
-        nearest.SetGrabber(this);
-        nearest.transform.SetParent(controllerTransform, false);
-        nearest.transform.localPosition = holdOffset;
-        nearest.transform.localRotation = Quaternion.identity;
+        return nearest != null;
     }
 
     private void HoldGrabbedBall()
@@ -130,6 +187,7 @@ public class ControllerBallGrabber : MonoBehaviour
         if (controllerTransform == null)
         {
             ReleaseBall();
+            EndBallGrabState();
             return;
         }
 
@@ -182,6 +240,11 @@ public class ControllerBallGrabber : MonoBehaviour
         _grabbedBall = null;
         _grabbedRigidbody = null;
         _originalParent = null;
+    }
+
+    private void EndBallGrabState()
+    {
+        SimpleGripInteractionState.End(interactionState, SimpleGripInteractionMode.BallGrab);
     }
 
     private void UpdateControllerVelocity()
@@ -240,5 +303,13 @@ public class ControllerBallGrabber : MonoBehaviour
         handPoseAnimator.readControllerGrip = true;
         handPoseAnimator.mirrorX = controllerNode == XRNode.LeftHand;
         handPoseAnimator.RebuildPoseCache();
+    }
+
+    private void ResolveInteractionState()
+    {
+        if (interactionState == null)
+        {
+            interactionState = SimpleGripInteractionState.EnsureInstance();
+        }
     }
 }

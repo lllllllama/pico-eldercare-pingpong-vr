@@ -29,6 +29,8 @@ public class BallSpawner : MonoBehaviour
     private static PhysicMaterial _ballPhysicsMaterial;
     private Coroutine _serveRoutine;
 
+    public bool IsServing => _serveRoutine != null;
+
     private void Start()
     {
         if (autoStartOnPlay)

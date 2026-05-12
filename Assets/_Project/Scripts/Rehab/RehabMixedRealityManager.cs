@@ -1,0 +1,98 @@
+using UnityEngine;
+using Unity.XR.PXR;
+
+#if PICO_OPENXR_SDK
+using Unity.XR.OpenXR.Features.PICOSupport;
+#endif
+
+namespace PicoElderCare.Rehab
+{
+    [DefaultExecutionOrder(-200)]
+    public class RehabMixedRealityManager : MonoBehaviour
+    {
+        public bool enableOnStart = true;
+        public bool enableVideoSeeThrough = true;
+        public bool configureTransparentCamera = true;
+        public bool suppressBackgroundVisuals = true;
+        public Camera targetCamera;
+
+        private MrBackgroundVisualSuppressor _backgroundSuppressor;
+
+        private void Awake()
+        {
+            if (enableOnStart)
+            {
+                ApplyMode();
+            }
+        }
+
+        private void Start()
+        {
+            if (enableOnStart)
+            {
+                ApplyMode();
+            }
+        }
+
+        public void ApplyMode()
+        {
+            ConfigureCamera();
+            ConfigureBackgroundVisualSuppressor();
+            ConfigurePicoPassthrough();
+        }
+
+        private void ConfigureCamera()
+        {
+            if (!configureTransparentCamera) return;
+
+            var camera = targetCamera != null ? targetCamera : Camera.main;
+            if (camera == null)
+            {
+                camera = FindObjectOfType<Camera>();
+            }
+
+            if (camera == null) return;
+
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            var clear = camera.backgroundColor;
+            clear.a = 0f;
+            camera.backgroundColor = clear;
+        }
+
+        private void ConfigureBackgroundVisualSuppressor()
+        {
+            if (!suppressBackgroundVisuals) return;
+
+            if (_backgroundSuppressor == null)
+            {
+                _backgroundSuppressor = GetComponent<MrBackgroundVisualSuppressor>();
+            }
+
+            if (_backgroundSuppressor == null)
+            {
+                _backgroundSuppressor = gameObject.AddComponent<MrBackgroundVisualSuppressor>();
+            }
+
+            _backgroundSuppressor.hideAllEnvironmentRenderers = true;
+            _backgroundSuppressor.hideAllRoomSensingRenderers = true;
+            _backgroundSuppressor.HideBackgroundVisuals();
+        }
+
+        private void ConfigurePicoPassthrough()
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+#if PICO_OPENXR_SDK
+            PassthroughFeature.EnableVideoSeeThrough = enableVideoSeeThrough;
+#else
+            PXR_Manager.EnableVideoSeeThrough = enableVideoSeeThrough;
+#endif
+            PXR_MixedReality.EnableVideoSeeThroughEffect(enableVideoSeeThrough);
+#else
+            if (enableVideoSeeThrough)
+            {
+                Debug.Log("Rehab MR passthrough is configured. Video see-through starts on a PICO Android runtime.");
+            }
+#endif
+        }
+    }
+}

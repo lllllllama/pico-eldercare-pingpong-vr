@@ -5,6 +5,8 @@ TagManager:
   serializedVersion: 2
   tags:
   - Camera0
+  - PlayerBody
+  - MrKeepVisible
   layers:
   - Default
   - TransparentFX
@@ -14,12 +16,12 @@ TagManager:
   - UI
   - 
   - 
-  - 
-  - 
-  - 
-  - 
-  - 
-  - 
+  - PlayerBody
+  - Racket
+  - Controller
+  - Ball
+  - Table
+  - TableSafetyZone
   - 
   - 
   - 

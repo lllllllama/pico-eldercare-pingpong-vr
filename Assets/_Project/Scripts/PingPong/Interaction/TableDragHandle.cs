@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.XR;
 
@@ -27,12 +26,19 @@ public class TableDragHandle : MonoBehaviour
     public bool loadSavedPlacementOnEnable;
     public bool savePlacementOnRelease;
     public string placementSaveKey = "PingPong.MixedReality.Table";
+    public Transform hmdTransform;
+    public float positionSensitivity = 0.25f;
+    public float rotationSensitivity = 0.35f;
+    public float maxMoveSpeedMetersPerSecond = 0.35f;
+    public float positionSmoothingSeconds = 0.12f;
+    public float dragDeadZoneMeters = 0.01f;
+    public float minUserTableDistanceMeters = 0.5f;
+    public float maxUserTableDistanceMeters = 3f;
+    public bool enableLocalHandleDrag = false;
+    public bool hideLocalHandleVisuals = true;
 
-    private readonly List<InputDevice> _devices = new List<InputDevice>();
-    private Vector3 _lastControllerPosition;
     private float _lockedTableY;
     private bool _dragging;
-    private bool _wasGripPressed;
     private bool _loadedSavedPlacement;
 
     public bool IsDragging => _dragging;
@@ -44,6 +50,7 @@ public class TableDragHandle : MonoBehaviour
         _lockedTableY = tableRoot != null ? tableRoot.position.y : PingPongGeometry.TableCenter.y;
         _loadedSavedPlacement = false;
         SyncHeightDependentValues();
+        ConfigureLocalHandleInteraction();
 
         if (loadSavedPlacementOnEnable)
         {
@@ -53,87 +60,13 @@ public class TableDragHandle : MonoBehaviour
 
     private void OnDisable()
     {
-        if (ballGrabber != null)
-        {
-            ballGrabber.suppressGrab = false;
-        }
-
         _dragging = false;
-        _wasGripPressed = false;
     }
 
     private void Update()
     {
         ResolveTableRoot();
-        if (tableRoot == null || controllerTransform == null) return;
-
-        var gripPressed = IsGripPressed();
-        var nearHandle = Vector3.Distance(controllerTransform.position, transform.position) <= activationRadius;
-
-        if (ballGrabber != null)
-        {
-            ballGrabber.suppressGrab = nearHandle || _dragging;
-        }
-
-        if (!gripPressed)
-        {
-            if (_dragging)
-            {
-                EndDrag();
-            }
-
-            _wasGripPressed = false;
-            return;
-        }
-
-        if (!_dragging && !_wasGripPressed && nearHandle && (ballGrabber == null || !ballGrabber.IsHoldingBall))
-        {
-            BeginDrag();
-        }
-
-        if (_dragging)
-        {
-            DragTable();
-        }
-
-        _wasGripPressed = gripPressed;
-    }
-
-    private void BeginDrag()
-    {
-        _dragging = true;
-        _lastControllerPosition = controllerTransform.position;
-        _lockedTableY = tableRoot.position.y;
-    }
-
-    private void EndDrag()
-    {
         _dragging = false;
-
-        if (savePlacementOnRelease)
-        {
-            SavePlacement();
-        }
-    }
-
-    private void DragTable()
-    {
-        var controllerDelta = controllerTransform.position - _lastControllerPosition;
-        _lastControllerPosition = controllerTransform.position;
-
-        var nextPosition = tableRoot.position + new Vector3(controllerDelta.x, 0f, controllerDelta.z);
-        if (lockTableHeight)
-        {
-            nextPosition.y = _lockedTableY;
-        }
-
-        if (constrainToBounds)
-        {
-            nextPosition.x = Mathf.Clamp(nextPosition.x, xBounds.x, xBounds.y);
-            nextPosition.z = Mathf.Clamp(nextPosition.z, zBounds.x, zBounds.y);
-        }
-
-        SetTablePosition(nextPosition);
     }
 
     public void SetTablePosition(Vector3 nextPosition)
@@ -253,25 +186,6 @@ public class TableDragHandle : MonoBehaviour
         }
     }
 
-    private bool IsGripPressed()
-    {
-        InputDevices.GetDevicesAtXRNode(controllerNode, _devices);
-        foreach (var device in _devices)
-        {
-            if (device.TryGetFeatureValue(CommonUsages.gripButton, out var gripButton) && gripButton)
-            {
-                return true;
-            }
-
-            if (device.TryGetFeatureValue(CommonUsages.grip, out var gripValue) && gripValue > 0.55f)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private void ResolveTableRoot()
     {
         if (tableRoot != null) return;
@@ -280,6 +194,29 @@ public class TableDragHandle : MonoBehaviour
         if (table != null)
         {
             tableRoot = table.transform;
+        }
+    }
+
+    public void ConfigureLocalHandleInteraction()
+    {
+        var localColliders = GetComponentsInChildren<Collider>(true);
+        foreach (var localCollider in localColliders)
+        {
+            if (localCollider != null)
+            {
+                localCollider.enabled = enableLocalHandleDrag;
+            }
+        }
+
+        if (!hideLocalHandleVisuals) return;
+
+        var renderers = GetComponentsInChildren<Renderer>(true);
+        foreach (var renderer in renderers)
+        {
+            if (renderer != null)
+            {
+                renderer.enabled = false;
+            }
         }
     }
 }

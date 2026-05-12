@@ -112,6 +112,11 @@ public static class PingPongDemoSceneBuilder
         var rightPaddle = InstantiateOrReuse("Paddle_Right", paddlePrefab, pingPong.transform, new Vector3(0.35f, 1.1f, 0.5f), GetInstanceScale(paddlePrefab, PaddleColliderSize));
         RemoveGeneratedObject("Paddle_Left");
         var leftHand = SetupLeftHandGrabVisual(pingPong.transform);
+        SetLayerRecursively(leftHand, "Controller");
+        SetLayerRecursively(table, "Table");
+        if (net != null) SetLayerRecursively(net, "Table");
+        SetLayerRecursively(rightPaddle, "Racket");
+        SetLayerRecursively(ballPrefab, "Ball");
 
         var spawn = GetOrCreate("BallSpawnPoint", pingPong.transform);
         spawn.transform.position = new Vector3(0f, 1.25f, 3.05f);
@@ -132,7 +137,7 @@ public static class PingPongDemoSceneBuilder
         spawner.spawnPoint = spawn.transform;
         spawner.targetPoint = target.transform;
         spawner.ballContainer = ballContainer.transform;
-        spawner.autoStartOnPlay = true;
+        spawner.autoStartOnPlay = !mixedRealityMode;
         spawner.serveSpeed = 3.0f;
         spawner.serveProfile = PingPongServeProfile.RandomMixed;
         spawner.upwardArc = 0.42f;
@@ -149,6 +154,8 @@ public static class PingPongDemoSceneBuilder
         spawner.serveSpinRandomness = 0.18f;
         spawner.maxServeSpin = 140f;
         ValidateBallSpawnerBindings(spawner);
+        var playerBodyProxy = mixedRealityMode ? SetupPlayerBodyProxy(managers.transform) : null;
+        SetupPlayerTableSafety(tableBlocker, table.transform, spawner, null, playerBodyProxy);
 
         var scoreObject = GetOrCreate("ScoreManager", managers.transform);
         var scoreManager = EnsureComponent<ScoreManager>(scoreObject);
@@ -162,7 +169,8 @@ public static class PingPongDemoSceneBuilder
         BuildUi(uiRoot.transform, scoreManager);
         BindController(rightPaddle.GetComponent<PaddleFollower>(), true);
         var leftController = BindController(leftHand.GetComponent<ControllerTransformFollower>(), false);
-        var leftBallGrabber = SetupControllerBallGrabber(managers.transform, leftController);
+        var gripState = SetupSimpleGripInteractionState(managers.transform);
+        var leftBallGrabber = SetupControllerBallGrabber(managers.transform, leftController, gripState);
         var uiCanvas = GameObject.Find("WorldSpaceCanvas")?.transform;
         var dragHandle = SetupTableDragHandle(
             pingPong.transform,
@@ -176,11 +184,12 @@ public static class PingPongDemoSceneBuilder
             mixedRealityMode,
             net != null ? net.transform : null,
             uiCanvas);
+        SetupPlayerTableSafety(tableBlocker, table.transform, spawner, dragHandle, playerBodyProxy);
         SetupInitialViewAligner(managers.transform, mixedRealityMode);
 
         if (mixedRealityMode)
         {
-            SetupMixedRealityMode(managers.transform, environment.transform, table.transform, dragHandle);
+            SetupMixedRealityMode(managers.transform, environment.transform, table.transform, dragHandle, leftBallGrabber, gripState);
         }
 
         EditorUtility.SetDirty(table);
@@ -221,10 +230,13 @@ public static class PingPongDemoSceneBuilder
         {
             SetupTablePhysics(table);
             tableBlocker = SetupPlayerTableBlocker(pingPong.transform, table.transform);
+            SetLayerRecursively(table, "Table");
+            SetLayerRecursively(tableBlocker, "TableSafetyZone");
             SetupControllerTableLimiter(leftHand, table.transform);
             var rightPaddle = GameObject.Find("Paddle_Right");
             if (rightPaddle != null)
             {
+                SetLayerRecursively(rightPaddle, "Racket");
                 SetupControllerTableLimiter(rightPaddle, table.transform);
             }
         }
@@ -233,8 +245,11 @@ public static class PingPongDemoSceneBuilder
             tableBlocker = SetupPlayerTableBlocker(pingPong.transform);
         }
         var leftController = BindController(leftHand.GetComponent<ControllerTransformFollower>(), false);
-        var leftBallGrabber = SetupControllerBallGrabber(GetOrCreate("Managers").transform, leftController);
+        var managers = GetOrCreate("Managers").transform;
+        var gripState = SetupSimpleGripInteractionState(managers);
+        var leftBallGrabber = SetupControllerBallGrabber(managers, leftController, gripState);
         var spawner = Object.FindObjectOfType<BallSpawner>();
+        SetupPlayerTableSafety(tableBlocker, table != null ? table.transform : null, spawner);
         if (table != null && spawner != null)
         {
             SetupTableDragHandle(pingPong.transform, table, leftController, leftBallGrabber, spawner, spawner.spawnPoint, spawner.targetPoint, tableBlocker != null ? tableBlocker.transform : null, false);
@@ -1100,6 +1115,8 @@ public static class PingPongDemoSceneBuilder
             Object.DestroyImmediate(renderer);
         }
 
+        SetLayerRecursively(blocker, "TableSafetyZone");
+
         var boundary = EnsureComponent<PlayerTableBoundary>(blocker);
         if (boundary != null)
         {
@@ -1119,6 +1136,42 @@ public static class PingPongDemoSceneBuilder
 
         EditorUtility.SetDirty(blocker);
         return blocker;
+    }
+
+    private static void SetupPlayerTableSafety(GameObject blocker, Transform tableTransform, BallSpawner spawner, TableDragHandle dragHandle = null, PingPongPlayerBodyProxy playerBodyProxy = null)
+    {
+        if (blocker == null) return;
+
+        var safety = EnsureComponent<PingPongPlayerTableSafety>(blocker);
+        if (safety == null) return;
+
+        safety.tableTransform = tableTransform;
+        safety.tableDragHandle = dragHandle != null ? dragHandle : Object.FindObjectOfType<TableDragHandle>(true);
+        safety.hmdTransform = Camera.main != null ? Camera.main.transform : null;
+        safety.playerBodyProxy = playerBodyProxy != null ? playerBodyProxy : Object.FindObjectOfType<PingPongPlayerBodyProxy>(true);
+        safety.ballSpawners = spawner != null ? new[] { spawner } : Object.FindObjectsOfType<BallSpawner>(true);
+        safety.tableSize = new Vector2(PingPongGeometry.TableWidth, PingPongGeometry.TableLength);
+        safety.safetyMargin = 0.35f;
+        safety.hardMargin = 0.15f;
+        safety.repulsionStrength = 0.6f;
+        safety.maxRepulsionSpeed = 0.4f;
+        safety.warningOnlyDistance = 0.35f;
+        safety.hardPauseDistance = 0.10f;
+        safety.blockedMarginMeters = 0.15f;
+        safety.warningMarginMeters = 0.35f;
+        safety.resumeStableSeconds = 0.5f;
+        safety.tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
+        safety.controlServing = true;
+        safety.clearBallsOnBlock = true;
+        safety.moveRigWhenInside = false;
+        safety.createRuntimePrompt = true;
+        safety.createRuntimeBoundary = true;
+        safety.promptHeightMeters = 1.35f;
+        safety.promptOuterOffsetMeters = 0.45f;
+        safety.hapticAmplitude = 0.12f;
+        safety.hapticDurationSeconds = 0.08f;
+        safety.hapticIntervalSeconds = 0.75f;
+        EditorUtility.SetDirty(blocker);
     }
 
     private static Vector3 LocalSizeForWorldSize(Transform transform, Vector3 worldSize)
@@ -1256,7 +1309,18 @@ public static class PingPongDemoSceneBuilder
         return null;
     }
 
-    private static ControllerBallGrabber SetupControllerBallGrabber(Transform parent, Transform leftController)
+    private static SimpleGripInteractionState SetupSimpleGripInteractionState(Transform parent)
+    {
+        var stateObject = GetOrCreate("SimpleGripInteractionState", parent);
+        var state = EnsureComponent<SimpleGripInteractionState>(stateObject);
+        if (state == null) return null;
+
+        state.ResetState();
+        EditorUtility.SetDirty(stateObject);
+        return state;
+    }
+
+    private static ControllerBallGrabber SetupControllerBallGrabber(Transform parent, Transform leftController, SimpleGripInteractionState gripState)
     {
         var grabberObject = GetOrCreate("LeftBallGrabber", parent);
         var grabber = EnsureComponent<ControllerBallGrabber>(grabberObject);
@@ -1270,9 +1334,26 @@ public static class PingPongDemoSceneBuilder
         grabber.grabScanInterval = 0.04f;
         grabber.grabLayers = ~0;
         grabber.holdOffset = new Vector3(0f, 0f, 0.08f);
-        grabber.suppressGrab = false;
+        grabber.interactionState = gripState;
         EditorUtility.SetDirty(grabberObject);
         return grabber;
+    }
+
+    private static PingPongPlayerBodyProxy SetupPlayerBodyProxy(Transform parent)
+    {
+        var proxyObject = GetOrCreate("PlayerBodyProxy", parent);
+        var proxy = EnsureComponent<PingPongPlayerBodyProxy>(proxyObject);
+        if (proxy == null) return null;
+
+        proxy.hmdTransform = Camera.main != null ? Camera.main.transform : null;
+        proxy.floorY = 0f;
+        proxy.bodyHeightMeters = 1.2f;
+        proxy.bodyRadiusMeters = 0.18f;
+        proxy.playerBodyTag = "PlayerBody";
+        proxy.playerBodyLayerName = "PlayerBody";
+        SetLayerRecursively(proxyObject, "PlayerBody");
+        EditorUtility.SetDirty(proxyObject);
+        return proxy;
     }
 
     private static void SetupControllerTableLimiter(GameObject controllerVisual, Transform tableTransform)
@@ -1302,16 +1383,8 @@ public static class PingPongDemoSceneBuilder
         handle.transform.localRotation = Quaternion.identity;
         handle.transform.localScale = Vector3.one;
 
-        var material = CreateOrLoadMaterial("TableDragHandleYellow", new Color(1f, 0.75f, 0.08f));
-        ConfigureVisualPrimitive(handle.transform, "HandleVisual", PrimitiveType.Sphere, Vector3.zero, Vector3.zero, Vector3.one * 0.11f, material);
-
-        var collider = EnsureComponent<SphereCollider>(handle);
-        if (collider != null)
-        {
-            collider.center = Vector3.zero;
-            collider.radius = 0.08f;
-            collider.isTrigger = true;
-        }
+        RemoveChildIfExists(handle.transform, "HandleVisual");
+        RemoveComponentIfExists<SphereCollider>(handle);
 
         var dragHandle = EnsureComponent<TableDragHandle>(handle);
         if (dragHandle != null)
@@ -1321,19 +1394,30 @@ public static class PingPongDemoSceneBuilder
             dragHandle.controllerTransform = leftController;
             dragHandle.controllerNode = XRNode.LeftHand;
             dragHandle.ballGrabber = leftBallGrabber;
+            dragHandle.hmdTransform = Camera.main != null ? Camera.main.transform : null;
             dragHandle.syncedTransforms = BuildSyncedTransformList(spawn, target, tableBlocker, extraSyncedTransforms);
             dragHandle.syncedSpawners = spawner != null ? new[] { spawner } : null;
             dragHandle.activationRadius = 0.2f;
             dragHandle.tableBounceLocalZ = tableBounceLocalZ;
             dragHandle.minimumNetClearanceAboveNet = 0.08f;
             dragHandle.lockTableHeight = true;
-            dragHandle.constrainToBounds = true;
+            dragHandle.constrainToBounds = !mixedRealityPlacement;
             dragHandle.xBounds = mixedRealityPlacement ? new Vector2(-3f, 3f) : new Vector2(-1.5f, 1.5f);
             dragHandle.zBounds = mixedRealityPlacement ? new Vector2(0.35f, 4.5f) : new Vector2(0.55f, 3.8f);
-            dragHandle.loadSavedPlacementOnEnable = mixedRealityPlacement;
-            dragHandle.savePlacementOnRelease = mixedRealityPlacement;
+            dragHandle.loadSavedPlacementOnEnable = false;
+            dragHandle.savePlacementOnRelease = false;
             dragHandle.placementSaveKey = "PingPong.MixedReality.Table";
             dragHandle.syncedControllerLimiters = Object.FindObjectsOfType<ControllerTableCollisionLimiter>(true);
+            dragHandle.positionSensitivity = 0.25f;
+            dragHandle.rotationSensitivity = 0.35f;
+            dragHandle.maxMoveSpeedMetersPerSecond = 0.35f;
+            dragHandle.positionSmoothingSeconds = 0.12f;
+            dragHandle.dragDeadZoneMeters = 0.01f;
+            dragHandle.minUserTableDistanceMeters = 0.5f;
+            dragHandle.maxUserTableDistanceMeters = 3f;
+            dragHandle.enableLocalHandleDrag = false;
+            dragHandle.hideLocalHandleVisuals = true;
+            dragHandle.ConfigureLocalHandleInteraction();
 
             if (spawner != null)
             {
@@ -1388,7 +1472,7 @@ public static class PingPongDemoSceneBuilder
         EditorUtility.SetDirty(alignerObject);
     }
 
-    private static void SetupMixedRealityMode(Transform managers, Transform environment, Transform table, TableDragHandle dragHandle)
+    private static void SetupMixedRealityMode(Transform managers, Transform environment, Transform table, TableDragHandle dragHandle, ControllerBallGrabber leftBallGrabber, SimpleGripInteractionState gripState)
     {
         var mrObject = GetOrCreate("MixedRealityManager", managers);
         var mrManager = EnsureComponent<PingPongMixedRealityManager>(mrObject);
@@ -1398,28 +1482,108 @@ public static class PingPongDemoSceneBuilder
             mrManager.enableVideoSeeThrough = true;
             mrManager.configureTransparentCamera = true;
             mrManager.disableVirtualEnvironment = true;
+            mrManager.suppressBackgroundVisuals = true;
             mrManager.targetCamera = Camera.main;
             mrManager.virtualEnvironmentObjects = CollectVirtualEnvironmentObjects(environment);
             EditorUtility.SetDirty(mrObject);
         }
 
-        var alignerObject = GetOrCreate("RoomPlaneAligner", managers);
-        var roomAligner = EnsureComponent<PingPongRoomPlaneAligner>(alignerObject);
-        if (roomAligner != null)
+        var backgroundSuppressor = EnsureComponent<MrBackgroundVisualSuppressor>(mrObject);
+        if (backgroundSuppressor != null)
         {
-            roomAligner.tableRoot = table;
-            roomAligner.tableDragHandle = dragHandle;
-            roomAligner.autoStartPlaneDetection = true;
-            roomAligner.autoAlignTableHeightToFloor = true;
-            roomAligner.alignOnlyOnce = true;
-            roomAligner.savePlacementAfterFloorAlignment = true;
-            roomAligner.tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
-            roomAligner.maximumFloorDistance = 3f;
-            EditorUtility.SetDirty(alignerObject);
+            backgroundSuppressor.hideAllEnvironmentRenderers = true;
+            backgroundSuppressor.hideAllRoomSensingRenderers = true;
+            backgroundSuppressor.scanIntervalSeconds = 0.15f;
+            EditorUtility.SetDirty(mrObject);
+        }
+
+        DestroyNamedObjectsIncludingInactive("RoomPlaneAligner");
+        RemoveSceneComponents<PingPongRoomPlaneAligner>();
+
+        var placerObject = GetOrCreate("TableOpenSpacePlacer", managers);
+        var tablePlacer = EnsureComponent<PingPongOpenSpaceTablePlacer>(placerObject);
+        if (tablePlacer != null)
+        {
+            tablePlacer.tableRoot = table;
+            tablePlacer.tableDragHandle = dragHandle;
+            tablePlacer.hmdTransform = Camera.main != null ? Camera.main.transform : null;
+            tablePlacer.remoteDragControllerTransform = dragHandle != null ? dragHandle.controllerTransform : null;
+            tablePlacer.ballGrabber = leftBallGrabber != null ? leftBallGrabber : (dragHandle != null ? dragHandle.ballGrabber : Object.FindObjectOfType<ControllerBallGrabber>(true));
+            tablePlacer.interactionState = gripState != null ? gripState : Object.FindObjectOfType<SimpleGripInteractionState>(true);
+            tablePlacer.ballSpawners = Object.FindObjectsOfType<BallSpawner>(true);
+            tablePlacer.autoPlaceOnStart = true;
+            tablePlacer.clearSavedPlacementOnStart = true;
+            tablePlacer.controlServing = true;
+            tablePlacer.clearBallsWhenTableMoves = true;
+            tablePlacer.startServingAfterClearPlacement = true;
+            tablePlacer.startServingAfterManualPlacement = true;
+            tablePlacer.startServingAfterConfirmedPlacementOnly = true;
+            tablePlacer.requireRoomSensingColliderForAutoPlacement = true;
+            tablePlacer.minimumRoomSensingColliderCount = 1;
+            tablePlacer.desiredDistanceMeters = 2.05f;
+            tablePlacer.minDistanceMeters = 1.35f;
+            tablePlacer.maxDistanceMeters = 3.8f;
+            tablePlacer.clearanceRadiusMeters = 1.65f;
+            tablePlacer.clearanceHeightMeters = 1.15f;
+            tablePlacer.fallbackFloorY = 0f;
+            tablePlacer.tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
+            tablePlacer.searchDurationSeconds = 8f;
+            tablePlacer.searchIntervalSeconds = 0.5f;
+            tablePlacer.enableRemoteDrag = true;
+            tablePlacer.remoteDragControllerNode = XRNode.LeftHand;
+            tablePlacer.remoteGrabSelectableRadiusMeters = 2.35f;
+            tablePlacer.remoteGrabMaxDistanceMeters = 8f;
+            tablePlacer.remoteDragMaxRayDistanceMeters = 8f;
+            tablePlacer.remoteDragActivationRadiusMeters = 2.35f;
+            tablePlacer.positionSensitivity = 0.25f;
+            tablePlacer.rotationSensitivity = 0.35f;
+            tablePlacer.maxMoveSpeedMetersPerSecond = 0.35f;
+            tablePlacer.positionSmoothingSeconds = 0.12f;
+            tablePlacer.dragDeadZoneMeters = 0.01f;
+            tablePlacer.minUserTableDistanceMeters = 0.5f;
+            tablePlacer.maxUserTableDistanceMeters = 3f;
+            EditorUtility.SetDirty(placerObject);
+        }
+
+        var remoteTableDrag = SetupRemoteTableDragController(managers, table, dragHandle, leftBallGrabber, gripState);
+        if (tablePlacer != null)
+        {
+            tablePlacer.remoteTableDragController = remoteTableDrag;
+            EditorUtility.SetDirty(placerObject);
         }
 
         SetupPicoRoomSensingManagers(managers);
         ConfigureMainCameraForPassthrough();
+    }
+
+    private static RemoteTableDragController SetupRemoteTableDragController(Transform managers, Transform table, TableDragHandle dragHandle, ControllerBallGrabber leftBallGrabber, SimpleGripInteractionState gripState)
+    {
+        var remoteObject = GetOrCreate("RemoteTableDragController", managers);
+        var remoteDrag = EnsureComponent<RemoteTableDragController>(remoteObject);
+        if (remoteDrag == null) return null;
+
+        remoteDrag.enableRemoteDrag = true;
+        remoteDrag.tableRoot = table;
+        remoteDrag.tableDragHandle = dragHandle;
+        remoteDrag.controllerTransform = dragHandle != null ? dragHandle.controllerTransform : null;
+        remoteDrag.controllerNode = XRNode.LeftHand;
+        remoteDrag.hmdTransform = Camera.main != null ? Camera.main.transform : null;
+        remoteDrag.ballGrabber = leftBallGrabber != null ? leftBallGrabber : (dragHandle != null ? dragHandle.ballGrabber : Object.FindObjectOfType<ControllerBallGrabber>(true));
+        remoteDrag.interactionState = gripState != null ? gripState : Object.FindObjectOfType<SimpleGripInteractionState>(true);
+        remoteDrag.openSpaceTablePlacer = Object.FindObjectOfType<PingPongOpenSpaceTablePlacer>(true);
+        remoteDrag.ballSpawners = Object.FindObjectsOfType<BallSpawner>(true);
+        remoteDrag.remoteGrabMaxDistanceMeters = 8f;
+        remoteDrag.positionSensitivity = 0.25f;
+        remoteDrag.maxMoveSpeed = 0.35f;
+        remoteDrag.positionSmoothing = 0.12f;
+        remoteDrag.dragDeadZone = 0.01f;
+        remoteDrag.minDistanceFromUser = 0.7f;
+        remoteDrag.maxDistanceFromUser = 3.0f;
+        remoteDrag.controlServing = true;
+        remoteDrag.clearBallsWhenDragging = true;
+        remoteDrag.resumeServingOnRelease = true;
+        EditorUtility.SetDirty(remoteObject);
+        return remoteDrag;
     }
 
     private static void SetupPicoRoomSensingManagers(Transform managers)
@@ -1449,6 +1613,15 @@ public static class PingPongDemoSceneBuilder
             meshManager.meshPrefab = meshTemplate;
         }
 
+        var visibilityGuard = EnsureComponent<PingPongRoomSensingVisibilityGuard>(sensingRoot);
+        if (visibilityGuard != null)
+        {
+            visibilityGuard.roomSensingRoot = sensingRoot.transform;
+            visibilityGuard.hideAllRenderersUnderRoot = true;
+            visibilityGuard.addMissingMeshColliders = true;
+            visibilityGuard.scanIntervalSeconds = 0.15f;
+        }
+
         EditorUtility.SetDirty(sensingRoot);
     }
 
@@ -1464,10 +1637,12 @@ public static class PingPongDemoSceneBuilder
         if (renderer != null)
         {
             renderer.sharedMaterial = material;
+            renderer.enabled = false;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             renderer.receiveShadows = false;
         }
 
+        EnsureComponent<MeshCollider>(template);
         template.SetActive(false);
         EditorUtility.SetDirty(template);
         return template;
@@ -1550,8 +1725,17 @@ public static class PingPongDemoSceneBuilder
     private static GameObject[] CollectVirtualEnvironmentObjects(Transform environment)
     {
         var objects = new List<GameObject>();
-        AddNamedEnvironmentObject(objects, "Floor", environment);
-        AddNamedEnvironmentObject(objects, "BackWall", environment);
+        if (environment != null)
+        {
+            foreach (var renderer in environment.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer != null && renderer.gameObject != null && !objects.Contains(renderer.gameObject))
+                {
+                    objects.Add(renderer.gameObject);
+                }
+            }
+        }
+
         return objects.ToArray();
     }
 
@@ -1567,9 +1751,11 @@ public static class PingPongDemoSceneBuilder
 
     private static void DisableMixedRealitySceneState()
     {
-        DestroyNamedObjectsIncludingInactive("MixedRealityManager", "RoomPlaneAligner", "MRSpaceSensing");
+        DestroyNamedObjectsIncludingInactive("MixedRealityManager", "RoomPlaneAligner", "TableOpenSpacePlacer", "RemoteTableDragController", "MRSpaceSensing");
         RemoveSceneComponents<PingPongMixedRealityManager>();
         RemoveSceneComponents<PingPongRoomPlaneAligner>();
+        RemoveSceneComponents<PingPongOpenSpaceTablePlacer>();
+        RemoveSceneComponents<RemoteTableDragController>();
         RemoveSceneComponents<PXR_PlaneDetectionManager>();
         RemoveSceneComponents<PXR_SpatialMeshManager>();
     }
@@ -1619,6 +1805,19 @@ public static class PingPongDemoSceneBuilder
         var backWall = GetOrCreateSingleEnvironmentSurface("BackWall", environment, PrimitiveType.Cube);
         backWall.transform.SetParent(environment);
         backWall.SetActive(false);
+
+        if (environment != null)
+        {
+            foreach (var renderer in environment.GetComponentsInChildren<Renderer>(true))
+            {
+                if (renderer != null)
+                {
+                    renderer.enabled = false;
+                    EditorUtility.SetDirty(renderer);
+                }
+            }
+        }
+
         EditorUtility.SetDirty(floor);
         EditorUtility.SetDirty(backWall);
     }
@@ -1785,6 +1984,25 @@ public static class PingPongDemoSceneBuilder
         var go = new GameObject(name);
         go.transform.SetParent(parent, false);
         return go;
+    }
+
+    private static void SetLayerRecursively(GameObject root, string layerName)
+    {
+        if (root == null || string.IsNullOrEmpty(layerName)) return;
+
+        var layer = LayerMask.NameToLayer(layerName);
+        if (layer < 0) return;
+
+        foreach (var transform in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (transform != null)
+            {
+                transform.gameObject.layer = layer;
+            }
+        }
+
+        root.layer = layer;
+        EditorUtility.SetDirty(root);
     }
 
     private static void RemoveGeneratedObject(string name)

@@ -16,7 +16,7 @@ GameObject:
   - component: {fileID: 7922263643544073356}
   - component: {fileID: 8893509667314498816}
   - component: {fileID: 5737093236157725005}
-  m_Layer: 0
+  m_Layer: 11
   m_Name: PingPongBall_Adapted
   m_TagString: Untagged
   m_Icon: {fileID: 0}

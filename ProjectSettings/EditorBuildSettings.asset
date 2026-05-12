@@ -5,12 +5,18 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
+  - enabled: 1
+    path: Assets/_Project/Scenes/00_MainEntry.unity
+    guid: 503ecf94db0d0274799505515e2d17a4
   - enabled: 0
     path: Assets/_Project/Scenes/00_DeviceTest.unity
     guid: 3a1c75517ff16914b9d1b873723fa5ca
   - enabled: 1
     path: Assets/_Project/Scenes/01_PingPongDemo.unity
     guid: f2ef01ca1882b1f42bc5718c1b97901e
+  - enabled: 1
+    path: Assets/_Project/Scenes/MR_Rehab_Main.unity
+    guid: 49f2935711925234d9ce52d35dd0697d
   m_configObjects:
     Unity.XR.PXR.Settings: {fileID: 11400000, guid: 62b17e85cad755c46aba4e6e46372a59, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: 16a6100869881fd469164bc1f45b0aaa, type: 2}

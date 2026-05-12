@@ -12,8 +12,11 @@ public class PingPongMixedRealityManager : MonoBehaviour
     public bool enableVideoSeeThrough = true;
     public bool configureTransparentCamera = true;
     public bool disableVirtualEnvironment = true;
+    public bool suppressBackgroundVisuals = true;
     public Camera targetCamera;
     public GameObject[] virtualEnvironmentObjects;
+
+    private MrBackgroundVisualSuppressor _backgroundSuppressor;
 
     private void Awake()
     {
@@ -35,6 +38,7 @@ public class PingPongMixedRealityManager : MonoBehaviour
     {
         ConfigureCamera();
         ConfigureVirtualEnvironment();
+        ConfigureBackgroundVisualSuppressor();
         ConfigurePicoPassthrough();
     }
 
@@ -67,6 +71,25 @@ public class PingPongMixedRealityManager : MonoBehaviour
                 environmentObject.SetActive(false);
             }
         }
+    }
+
+    private void ConfigureBackgroundVisualSuppressor()
+    {
+        if (!suppressBackgroundVisuals) return;
+
+        if (_backgroundSuppressor == null)
+        {
+            _backgroundSuppressor = GetComponent<MrBackgroundVisualSuppressor>();
+        }
+
+        if (_backgroundSuppressor == null)
+        {
+            _backgroundSuppressor = gameObject.AddComponent<MrBackgroundVisualSuppressor>();
+        }
+
+        _backgroundSuppressor.hideAllEnvironmentRenderers = true;
+        _backgroundSuppressor.hideAllRoomSensingRenderers = true;
+        _backgroundSuppressor.HideBackgroundVisuals();
     }
 
     private void ConfigurePicoPassthrough()
