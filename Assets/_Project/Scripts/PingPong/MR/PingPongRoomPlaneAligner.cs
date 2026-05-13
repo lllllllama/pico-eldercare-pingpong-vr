@@ -12,6 +12,7 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
     public bool autoAlignTableHeightToFloor = true;
     public bool alignOnlyOnce = true;
     public bool savePlacementAfterFloorAlignment = true;
+    public bool upgradeToOpenSpacePlacement = true;
     public float tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
     public float minimumHeightChange = 0.01f;
     public float maximumFloorDistance = 3f;
@@ -21,6 +22,12 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
     private void Start()
     {
         ResolveReferences();
+
+        if (upgradeToOpenSpacePlacement)
+        {
+            EnsureOpenSpacePlacement();
+            return;
+        }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
         if (autoStartPlaneDetection)
@@ -51,6 +58,7 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
 
     private void OnEnable()
     {
+        if (upgradeToOpenSpacePlacement) return;
         PXR_Manager.PlaneDetectionDataUpdated += HandlePlaneDetectionDataUpdated;
     }
 
@@ -61,6 +69,7 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
 
     private void HandlePlaneDetectionDataUpdated(List<PxrPlaneData> planeDatas)
     {
+        if (upgradeToOpenSpacePlacement) return;
         if (!autoAlignTableHeightToFloor || planeDatas == null || planeDatas.Count == 0) return;
         if (alignOnlyOnce && _alignedToFloor) return;
         if (tableDragHandle != null && tableDragHandle.IsDragging) return;
@@ -236,5 +245,65 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
         {
             tableDragHandle = FindObjectOfType<TableDragHandle>();
         }
+    }
+
+    private void EnsureOpenSpacePlacement()
+    {
+        ResolveReferences();
+
+        var placer = FindObjectOfType<PingPongOpenSpaceTablePlacer>(true);
+        if (placer == null)
+        {
+            placer = gameObject.AddComponent<PingPongOpenSpaceTablePlacer>();
+        }
+
+        placer.tableRoot = tableRoot;
+        placer.tableDragHandle = tableDragHandle;
+        placer.hmdTransform = Camera.main != null ? Camera.main.transform : null;
+        placer.remoteDragControllerTransform = tableDragHandle != null ? tableDragHandle.controllerTransform : null;
+        placer.ballGrabber = tableDragHandle != null ? tableDragHandle.ballGrabber : FindObjectOfType<ControllerBallGrabber>(true);
+        placer.interactionState = SimpleGripInteractionState.EnsureInstance();
+        placer.ballSpawners = FindObjectsOfType<BallSpawner>(true);
+        placer.autoPlaceOnStart = true;
+        placer.clearSavedPlacementOnStart = true;
+        placer.controlServing = true;
+        placer.clearBallsWhenTableMoves = true;
+        placer.startServingAfterClearPlacement = true;
+        placer.startServingAfterManualPlacement = true;
+        placer.startServingAfterConfirmedPlacementOnly = true;
+        placer.requireRoomSensingColliderForAutoPlacement = true;
+        placer.minimumRoomSensingColliderCount = 1;
+        placer.desiredDistanceMeters = 2.05f;
+        placer.minDistanceMeters = 1.35f;
+        placer.maxDistanceMeters = 3.8f;
+        placer.clearanceRadiusMeters = 1.65f;
+        placer.clearanceHeightMeters = 1.15f;
+        placer.fallbackFloorY = 0f;
+        placer.tableCenterHeightAboveFloor = tableCenterHeightAboveFloor;
+        placer.searchDurationSeconds = 8f;
+        placer.searchIntervalSeconds = 0.5f;
+        placer.enableRemoteDrag = true;
+        placer.remoteDragControllerNode = XRNode.LeftHand;
+        placer.remoteGrabSelectableRadiusMeters = 2.35f;
+        placer.remoteGrabMaxDistanceMeters = 8f;
+        placer.remoteDragMaxRayDistanceMeters = 8f;
+        placer.remoteDragActivationRadiusMeters = 2.35f;
+        placer.positionSensitivity = 0.25f;
+        placer.rotationSensitivity = 0.35f;
+        placer.maxMoveSpeedMetersPerSecond = 0.35f;
+        placer.positionSmoothingSeconds = 0.12f;
+        placer.dragDeadZoneMeters = 0.01f;
+        placer.minUserTableDistanceMeters = 0.5f;
+        placer.maxUserTableDistanceMeters = 3f;
+        placer.enabled = true;
+
+        var suppressor = FindObjectOfType<MrBackgroundVisualSuppressor>(true);
+        if (suppressor == null)
+        {
+            suppressor = gameObject.AddComponent<MrBackgroundVisualSuppressor>();
+        }
+
+        suppressor.hideAllEnvironmentRenderers = true;
+        suppressor.hideAllRoomSensingRenderers = true;
     }
 }

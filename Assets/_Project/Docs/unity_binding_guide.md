@@ -25,7 +25,7 @@
 - The tool uses the replacement model as a visual child only. Project-owned physics and gameplay components stay on the adapted prefab root.
 
 ## What is auto-created
-- Environment: Floor (if no obvious floor/ground exists), Directional Light (if none), BackWall.
+- Environment: Floor (if no obvious floor/ground exists), Directional Light (if none). Legacy `BackWall` objects are hidden so they do not render as an extra white divider.
 - PingPong: Table, Net, Paddle_Right, BallSpawnPoint, BallTargetPoint, BallContainer.
 - Managers: BallSpawner, ScoreManager, HitFeedbackManager.
 - UI: World Space Canvas with Hit/Served/Accuracy TMP labels.
