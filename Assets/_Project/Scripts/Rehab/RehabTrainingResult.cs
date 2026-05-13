@@ -26,6 +26,7 @@ namespace PicoElderCare.Rehab
         public int pauseCount;
         public string endReason;
         public float maxHeadDistanceFromCenterMeters;
+        public RehabMovementResult[] movementResults;
 
         public static RehabTrainingResult CreateStarted(
             RehabMovementId movement,
@@ -51,7 +52,8 @@ namespace PicoElderCare.Rehab
             float completionTime,
             float bestHold,
             int pauses,
-            float maxHeadDistance)
+            float maxHeadDistance,
+            RehabMovementResult[] results = null)
         {
             endedUtc = DateTime.UtcNow.ToString("o");
             endReason = reason.ToString();
@@ -61,6 +63,7 @@ namespace PicoElderCare.Rehab
             bestHoldSeconds = bestHold;
             pauseCount = pauses;
             maxHeadDistanceFromCenterMeters = maxHeadDistance;
+            movementResults = results;
         }
     }
 }

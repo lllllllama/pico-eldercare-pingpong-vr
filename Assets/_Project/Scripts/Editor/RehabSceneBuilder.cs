@@ -32,6 +32,25 @@ public static class RehabSceneBuilder
 
     private static TMP_FontAsset rehabFontAsset;
 
+    private struct RehabTrainingUi
+    {
+        public GameObject canvas;
+        public GameObject mainMenuPanel;
+        public GameObject rehabTrainingSelectPanel;
+        public GameObject rehabTrainingPanel;
+        public GameObject trainingResultPanel;
+        public TMP_Text title;
+        public TMP_Text status;
+        public TMP_Text timer;
+        public TMP_Text completion;
+        public TMP_Text safety;
+        public TMP_Text debug;
+        public Button rehabButton;
+        public Button baduanjinButton;
+        public Button taiChiButton;
+        public Button backButton;
+    }
+
     [MenuItem("Tools/PICO ElderCare/Build Main Entry Scene")]
     public static void BuildMainEntryScene()
     {
@@ -138,7 +157,8 @@ public static class RehabSceneBuilder
         var homeMenu = managers.AddComponent<ModuleHomeMenu>();
 
         var trainingArea = BuildTrainingArea(visualRoot.transform, out var trainingAreaDragHandle);
-        var promptCanvas = BuildRehabPromptCanvas(visualRoot.transform, mainCamera, homeMenu, out var title, out var status, out var timer, out var debug);
+        var rehabUi = BuildRehabPromptCanvas(visualRoot.transform, mainCamera, homeMenu);
+        var promptCanvas = rehabUi.canvas;
 
         var poseTracker = managers.AddComponent<HandPoseTracker>();
         poseTracker.hmdTransform = hmd;
@@ -150,7 +170,13 @@ public static class RehabSceneBuilder
         safetyMonitor.pauseDistanceMeters = 1.2f;
         safetyMonitor.resumeDistanceMeters = 1.1f;
 
+        var baduanjinEvaluator = managers.AddComponent<BaduanjinEvaluator>();
+        var taiChiEvaluator = managers.AddComponent<TaiChiEvaluator>();
         var evaluator = managers.AddComponent<MovementEvaluator>();
+        evaluator.trainingMode = RehabTrainingMode.Baduanjin;
+        evaluator.baduanjinEvaluator = baduanjinEvaluator;
+        evaluator.taiChiEvaluator = taiChiEvaluator;
+        evaluator.movementDefinitions = BaduanjinEvaluator.CreateDefaultMovements();
         evaluator.movementId = RehabMovementId.Baduanjin_TwoHandsLiftHeaven;
         evaluator.movementName = "八段锦：双手托天理三焦";
         evaluator.handsAboveHeadMeters = 0.15f;
@@ -159,18 +185,28 @@ public static class RehabSceneBuilder
         evaluator.maximumHoldSeconds = 5f;
 
         var recorder = managers.AddComponent<TrainingResultRecorder>();
+        var uiController = promptCanvas.AddComponent<RehabUIController>();
+        uiController.movementNameText = rehabUi.title;
+        uiController.stepText = rehabUi.status;
+        uiController.remainingTimeText = rehabUi.timer;
+        uiController.completionText = rehabUi.completion;
+        uiController.safetyPromptText = rehabUi.safety;
+        uiController.debugText = rehabUi.debug;
+
         var session = managers.AddComponent<RehabSessionManager>();
         session.handPoseTracker = poseTracker;
         session.safetyMonitor = safetyMonitor;
         session.movementEvaluator = evaluator;
+        session.uiController = uiController;
         session.resultRecorder = recorder;
         session.trainingAreaRoot = trainingArea.transform;
         session.promptCanvas = promptCanvas.transform;
-        session.titleText = title;
-        session.statusText = status;
-        session.timerText = timer;
-        session.debugText = debug;
+        session.titleText = rehabUi.title;
+        session.statusText = rehabUi.status;
+        session.timerText = rehabUi.timer;
+        session.debugText = rehabUi.debug;
         session.sessionDurationSeconds = 300f;
+        session.autoStartSession = false;
         session.trainingDistanceMeters = 1.5f;
         session.trainingFloorY = 0f;
         session.promptHeightMeters = 1.65f;
@@ -183,6 +219,19 @@ public static class RehabSceneBuilder
         session.openSpaceMaxDistanceMeters = 3.0f;
         session.openSpaceSearchDurationSeconds = 10f;
         session.openSpaceSearchIntervalSeconds = 0.5f;
+
+        var modeSelectUi = promptCanvas.AddComponent<RehabModeSelectUI>();
+        modeSelectUi.mainMenuPanel = rehabUi.mainMenuPanel;
+        modeSelectUi.rehabTrainingSelectPanel = rehabUi.rehabTrainingSelectPanel;
+        modeSelectUi.rehabTrainingPanel = rehabUi.rehabTrainingPanel;
+        modeSelectUi.trainingResultPanel = rehabUi.trainingResultPanel;
+        modeSelectUi.rehabButton = rehabUi.rehabButton;
+        modeSelectUi.baduanjinButton = rehabUi.baduanjinButton;
+        modeSelectUi.taiChiButton = rehabUi.taiChiButton;
+        modeSelectUi.backButton = rehabUi.backButton;
+        modeSelectUi.sessionManager = session;
+        modeSelectUi.showTrainingSelectOnStart = true;
+        session.modeSelectUI = modeSelectUi;
 
         if (trainingAreaDragHandle != null)
         {
@@ -288,21 +337,57 @@ public static class RehabSceneBuilder
         return root;
     }
 
-    private static GameObject BuildRehabPromptCanvas(
+    private static RehabTrainingUi BuildRehabPromptCanvas(
         Transform parent,
         Camera mainCamera,
-        ModuleHomeMenu homeMenu,
-        out TMP_Text title,
-        out TMP_Text status,
-        out TMP_Text timer,
-        out TMP_Text debug)
+        ModuleHomeMenu homeMenu)
     {
         var canvasGo = CreateWorldCanvas("RehabPromptCanvas", null, new Vector3(0f, 1.65f, 2.35f), new Vector2(900f, 460f));
         canvasGo.transform.SetParent(parent, true);
         var canvas = canvasGo.GetComponent<Canvas>();
         canvas.worldCamera = mainCamera;
 
-        var panel = CreateUiObject("Panel", canvasGo.transform);
+        var ui = new RehabTrainingUi
+        {
+            canvas = canvasGo,
+            mainMenuPanel = CreatePanel(canvasGo.transform, "MainMenuPanel"),
+            rehabTrainingSelectPanel = CreatePanel(canvasGo.transform, "RehabTrainingSelectPanel"),
+            rehabTrainingPanel = CreatePanel(canvasGo.transform, "RehabTrainingPanel"),
+            trainingResultPanel = CreatePanel(canvasGo.transform, "TrainingResultPanel")
+        };
+
+        CreateText(ui.mainMenuPanel.transform, "Title", "康复运动", 44, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 100f), new Vector2(800f, 80f));
+        ui.rehabButton = CreateButton(ui.mainMenuPanel.transform, "RehabButton", "康复运动", new Vector2(0f, -40f), new Vector2(360f, 88f));
+
+        CreateText(ui.rehabTrainingSelectPanel.transform, "Title", "请选择康复训练类型", 42, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 145f), new Vector2(820f, 78f));
+        ui.baduanjinButton = CreateButton(ui.rehabTrainingSelectPanel.transform, "BaduanjinButton", "八段锦训练", new Vector2(0f, 50f), new Vector2(360f, 76f));
+        ui.taiChiButton = CreateButton(ui.rehabTrainingSelectPanel.transform, "TaiChiButton", "太极训练", new Vector2(0f, -45f), new Vector2(360f, 76f));
+        ui.backButton = CreateButton(ui.rehabTrainingSelectPanel.transform, "BackButton", "返回", new Vector2(0f, -140f), new Vector2(260f, 68f));
+
+        ui.title = CreateText(ui.rehabTrainingPanel.transform, "MovementTitle", "八段锦：双手托天理三焦", 36, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 150f), new Vector2(800f, 64f));
+        ui.status = CreateText(ui.rehabTrainingPanel.transform, "StatusText", "请准备：双手托天理三焦", 30, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, 78f), new Vector2(800f, 62f));
+        ui.timer = CreateText(ui.rehabTrainingPanel.transform, "TimerText", "剩余 05:00", 28, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(-205f, 10f), new Vector2(360f, 50f));
+        ui.completion = CreateText(ui.rehabTrainingPanel.transform, "CompletionText", "完成度 0%", 28, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(205f, 10f), new Vector2(360f, 50f));
+        ui.safety = CreateText(ui.rehabTrainingPanel.transform, "SafetyPromptText", "保持舒适幅度，准备开始", 24, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -56f), new Vector2(800f, 52f));
+        ui.debug = CreateText(ui.rehabTrainingPanel.transform, "DebugText", "动作 1/8 | 步骤 1/1 | 保持 0.0s | 距中心 0.00m", 20, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -126f), new Vector2(820f, 50f));
+        var homeButton = CreateButton(ui.rehabTrainingPanel.transform, "HomeButton", "返回主页", new Vector2(330f, -198f), new Vector2(180f, 54f));
+        UnityEventTools.AddPersistentListener(homeButton.onClick, homeMenu.LoadMainEntry);
+
+        CreateText(ui.trainingResultPanel.transform, "Title", "训练结果", 42, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 95f), new Vector2(800f, 76f));
+        CreateText(ui.trainingResultPanel.transform, "Summary", "训练结束后结果会自动保存到本机", 28, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, 0f), new Vector2(760f, 90f));
+        var resultBackButton = CreateButton(ui.trainingResultPanel.transform, "BackButton", "返回主页", new Vector2(0f, -125f), new Vector2(240f, 66f));
+        UnityEventTools.AddPersistentListener(resultBackButton.onClick, homeMenu.LoadMainEntry);
+
+        ui.mainMenuPanel.SetActive(false);
+        ui.rehabTrainingSelectPanel.SetActive(true);
+        ui.rehabTrainingPanel.SetActive(false);
+        ui.trainingResultPanel.SetActive(false);
+        return ui;
+    }
+
+    private static GameObject CreatePanel(Transform parent, string name)
+    {
+        var panel = CreateUiObject(name, parent);
         var panelRect = panel.GetComponent<RectTransform>();
         panelRect.anchorMin = Vector2.zero;
         panelRect.anchorMax = Vector2.one;
@@ -310,15 +395,7 @@ public static class RehabSceneBuilder
         panelRect.offsetMax = Vector2.zero;
         var panelImage = panel.AddComponent<Image>();
         panelImage.color = new Color(0.03f, 0.05f, 0.06f, 0.72f);
-
-        title = CreateText(panel.transform, "MovementTitle", "八段锦：双手托天理三焦", 38, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 135f), new Vector2(800f, 80f));
-        status = CreateText(panel.transform, "StatusText", "请准备：双手托天理三焦", 34, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, 35f), new Vector2(800f, 90f));
-        timer = CreateText(panel.transform, "TimerText", "剩余 05:00", 30, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, -55f), new Vector2(800f, 70f));
-        debug = CreateText(panel.transform, "DebugText", "保持 0.0s | 最佳 0.0s | 距中心 0.00m", 22, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -135f), new Vector2(820f, 60f));
-        var homeButton = CreateButton(panel.transform, "HomeButton", "返回主页", new Vector2(330f, -198f), new Vector2(180f, 54f));
-        UnityEventTools.AddPersistentListener(homeButton.onClick, homeMenu.LoadMainEntry);
-
-        return canvasGo;
+        return panel;
     }
 
     private static GameObject CreateXrOrigin()

@@ -8,6 +8,8 @@ namespace PicoElderCare.Rehab
         public HandPoseTracker handPoseTracker;
         public SafetyMonitor safetyMonitor;
         public MovementEvaluator movementEvaluator;
+        public RehabUIController uiController;
+        public RehabModeSelectUI modeSelectUI;
         public TrainingResultRecorder resultRecorder;
 
         public Transform trainingAreaRoot;
@@ -98,19 +100,8 @@ namespace PicoElderCare.Rehab
                 _elapsedTrainingSeconds += Time.deltaTime;
             }
 
-            var evaluation = movementEvaluator.Evaluate(sample, Time.deltaTime, paused, _elapsedTrainingSeconds);
-
-            if (paused)
-            {
-                SetStatus("请回到训练圈");
-            }
-            else
-            {
-                SetStatus(evaluation.statusMessage);
-            }
-
-            RefreshTimer();
-            RefreshDebug(evaluation, safety);
+            var evaluation = movementEvaluator.Evaluate(sample, Time.deltaTime, paused, _elapsedTrainingSeconds, safety.pauseCount);
+            RefreshUi(evaluation, safety);
 
             if (evaluation.completed)
             {
@@ -141,9 +132,11 @@ namespace PicoElderCare.Rehab
             _sessionActive = true;
             _openSpaceSearchUntilTime = Time.time + Mathf.Max(0f, openSpaceSearchDurationSeconds);
             _nextOpenSpaceSearchTime = 0f;
+
+            var firstMovement = movementEvaluator.CurrentMovement;
             _currentResult = RehabTrainingResult.CreateStarted(
-                movementEvaluator.movementId,
-                movementEvaluator.movementName,
+                firstMovement != null ? firstMovement.movementId : movementEvaluator.movementId,
+                GetTrainingDisplayName(),
                 sessionDurationSeconds);
 
             if (!_trainingAreaPlaced)
@@ -152,8 +145,41 @@ namespace PicoElderCare.Rehab
             }
 
             RefreshTitle();
-            SetStatus("请准备：双手托天理三焦");
+            SetStatus(GetCurrentStepInstruction("\u8bf7\u51c6\u5907\u5f00\u59cb"));
             RefreshTimer();
+            if (uiController != null)
+            {
+                uiController.SetIdle(
+                    firstMovement != null ? firstMovement.movementName : movementEvaluator.movementName,
+                    GetCurrentStepInstruction("\u8bf7\u51c6\u5907\u5f00\u59cb"),
+                    sessionDurationSeconds);
+            }
+        }
+
+        public void StartTraining(RehabTrainingType trainingType)
+        {
+            ResolveReferences();
+
+            if (movementEvaluator == null)
+            {
+                Debug.LogError("Cannot start rehab training because MovementEvaluator is missing.");
+                return;
+            }
+
+            switch (trainingType)
+            {
+                case RehabTrainingType.TaiChi:
+                    movementEvaluator.trainingMode = RehabTrainingMode.TaiChiTraining;
+                    movementEvaluator.movementDefinitions = TaiChiEvaluator.CreateDefaultMovements();
+                    break;
+                default:
+                    movementEvaluator.trainingMode = RehabTrainingMode.Baduanjin;
+                    movementEvaluator.movementDefinitions = BaduanjinEvaluator.CreateDefaultMovements();
+                    break;
+            }
+
+            movementEvaluator.autoCreateDefaultBaduanjinDefinitions = true;
+            BeginSession();
         }
 
         public void StopSession()
@@ -197,6 +223,13 @@ namespace PicoElderCare.Rehab
             var completed = reason == RehabSessionEndReason.Completed;
             if (_currentResult != null)
             {
+                if (!completed && movementEvaluator != null)
+                {
+                    movementEvaluator.FinalizeCurrentMovement(
+                        _elapsedTrainingSeconds,
+                        safetyMonitor != null ? safetyMonitor.PauseCount : 0);
+                }
+
                 _currentResult.Finish(
                     reason,
                     completed,
@@ -204,7 +237,8 @@ namespace PicoElderCare.Rehab
                     movementEvaluator != null ? movementEvaluator.CompletionTimeSeconds : -1f,
                     movementEvaluator != null ? movementEvaluator.BestHoldSeconds : 0f,
                     safetyMonitor != null ? safetyMonitor.PauseCount : 0,
-                    safetyMonitor != null ? safetyMonitor.MaxHeadDistanceFromCenterMeters : 0f);
+                    safetyMonitor != null ? safetyMonitor.MaxHeadDistanceFromCenterMeters : 0f,
+                    movementEvaluator != null ? movementEvaluator.GetMovementResultsSnapshot() : null);
 
                 if (resultRecorder != null)
                 {
@@ -212,8 +246,12 @@ namespace PicoElderCare.Rehab
                 }
             }
 
-            SetStatus(completed ? "动作完成" : "训练结束");
+            SetStatus(completed ? "训练完成" : "训练结束");
             RefreshTimer();
+            if (modeSelectUI != null)
+            {
+                modeSelectUI.ShowTrainingResultPanel();
+            }
         }
 
         private void TryPlaceTrainingArea()
@@ -309,6 +347,8 @@ namespace PicoElderCare.Rehab
             if (handPoseTracker == null) handPoseTracker = FindObjectOfType<HandPoseTracker>(true);
             if (safetyMonitor == null) safetyMonitor = FindObjectOfType<SafetyMonitor>(true);
             if (movementEvaluator == null) movementEvaluator = FindObjectOfType<MovementEvaluator>(true);
+            if (uiController == null) uiController = FindObjectOfType<RehabUIController>(true);
+            if (modeSelectUI == null) modeSelectUI = FindObjectOfType<RehabModeSelectUI>(true);
             if (resultRecorder == null) resultRecorder = FindObjectOfType<TrainingResultRecorder>(true);
         }
 
@@ -316,8 +356,37 @@ namespace PicoElderCare.Rehab
         {
             if (titleText != null && movementEvaluator != null)
             {
-                titleText.text = movementEvaluator.movementName;
+                titleText.text = movementEvaluator.CurrentMovement != null ? movementEvaluator.CurrentMovement.movementName : movementEvaluator.movementName;
             }
+        }
+
+        private string GetTrainingDisplayName()
+        {
+            if (movementEvaluator == null) return "\u5eb7\u590d\u8bad\u7ec3";
+
+            switch (movementEvaluator.trainingMode)
+            {
+                case RehabTrainingMode.TaiChiTraining:
+                    return "\u592a\u6781\u8bad\u7ec3";
+                default:
+                    return "\u516b\u6bb5\u9526\u8bad\u7ec3";
+            }
+        }
+
+        private string GetCurrentStepInstruction(string fallback)
+        {
+            if (movementEvaluator == null) return fallback;
+
+            var step = movementEvaluator.CurrentStep;
+            if (step != null && !string.IsNullOrEmpty(step.instruction))
+            {
+                return step.instruction;
+            }
+
+            var movement = movementEvaluator.CurrentMovement;
+            return movement != null && !string.IsNullOrEmpty(movement.movementName)
+                ? movement.movementName
+                : fallback;
         }
 
         private void SetStatus(string message)
@@ -336,15 +405,33 @@ namespace PicoElderCare.Rehab
             timerText.text = string.Format("剩余 {0:00}:{1:00}", Mathf.FloorToInt(remaining / 60f), Mathf.FloorToInt(remaining % 60f));
         }
 
-        private void RefreshDebug(RehabMovementEvaluation evaluation, RehabSafetyState safety)
+        private void RefreshUi(RehabMovementEvaluation evaluation, RehabSafetyState safety)
         {
-            if (debugText == null) return;
+            if (titleText != null) titleText.text = evaluation.movementName;
+            if (statusText != null) statusText.text = safety.isPaused ? "请回到训练圈内" : evaluation.statusMessage;
+            if (timerText != null)
+            {
+                var remaining = Mathf.Max(0f, evaluation.remainingSeconds);
+                timerText.text = string.Format("当前步骤剩余 {0:00}:{1:00}", Mathf.FloorToInt(remaining / 60f), Mathf.FloorToInt(remaining % 60f));
+            }
 
-            debugText.text = string.Format(
-                "保持 {0:0.0}s | 最佳 {1:0.0}s | 距中心 {2:0.00}m",
-                evaluation.currentHoldSeconds,
-                evaluation.bestHoldSeconds,
-                safety.headDistanceFromCenterMeters);
+            if (debugText != null)
+            {
+                debugText.text = string.Format(
+                    "保持 {0:0.0}s | 最佳 {1:0.0}s | 距中心 {2:0.00}m | 完成 {3:0}%",
+                    evaluation.currentHoldSeconds,
+                    evaluation.bestHoldSeconds,
+                    safety.headDistanceFromCenterMeters,
+                    evaluation.completion01 * 100f);
+            }
+
+            if (uiController != null)
+            {
+                uiController.Refresh(
+                    evaluation,
+                    safety,
+                    Mathf.Max(0f, sessionDurationSeconds - _elapsedTrainingSeconds));
+            }
         }
     }
 }
