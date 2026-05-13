@@ -45,6 +45,11 @@
   - `Assets/_Project/External/VRTableTennis/Adapted/PingPongNet_Adapted.prefab`
   - `Assets/_Project/External/VRTableTennis/Adapted/PingPongPaddle_Adapted.prefab`
   - `Assets/_Project/External/VRTableTennis/Adapted/PingPongBall_Adapted.prefab`
+- Replacement Unity Hub / Asset Store models can be placed under:
+  - `Assets/_Project/External/CustomPingPong/Models`
+- Paddle replacement names checked before the VRTableTennis paddle are `PingPongPaddle`, `Paddle`, and `Racket` with `.prefab`, `.fbx`, or `.obj` extensions.
+- Ball replacement names checked before the fallback sphere are `PingPongBall` and `Ball` with `.prefab`, `.fbx`, or `.obj` extensions.
+- Replacement models are used as visual children only; adapted prefab roots keep current-project physics, collision, ball, and paddle scripts.
 - If any adapted prefab is unavailable, the existing primitive fallback path remains active:
   - `Assets/_Project/Prefabs/PingPong`
   - `Assets/_Project/Materials/PingPong`

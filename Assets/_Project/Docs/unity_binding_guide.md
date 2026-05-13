@@ -16,8 +16,16 @@
 - You can rebuild the adapted prefabs from the copied original assets with `Tools/PICO ElderCare/Build VRTableTennis Adapted Assets` after Unity imports the FBX and audio files successfully.
 - The current adapted prefabs include table, net, paddle, and ball only. They do not include old VRTableTennis scenes, Oculus, SteamVR, Photon, or legacy controller scripts.
 
+## Replace paddle and ball models
+- Put Unity Hub / Asset Store replacement models under `Assets/_Project/External/CustomPingPong/Models`.
+- Paddle model names checked first: `PingPongPaddle.prefab`, `PingPongPaddle.fbx`, `Paddle.prefab`, `Paddle.fbx`, `Racket.prefab`, `Racket.fbx`.
+- Ball model names checked first: `PingPongBall.prefab`, `PingPongBall.fbx`, `Ball.prefab`, `Ball.fbx`.
+- Run `Tools/PICO ElderCare/Build VRTableTennis Adapted Assets` after importing or renaming the models.
+- Then run `Tools/PICO ElderCare/Build PingPong Demo Scene`.
+- The tool uses the replacement model as a visual child only. Project-owned physics and gameplay components stay on the adapted prefab root.
+
 ## What is auto-created
-- Environment: Floor (if no obvious floor/ground exists), Directional Light (if none), BackWall.
+- Environment: Floor (if no obvious floor/ground exists), Directional Light (if none). Legacy `BackWall` objects are hidden so they do not render as an extra white divider.
 - PingPong: Table, Net, Paddle_Right, BallSpawnPoint, BallTargetPoint, BallContainer.
 - Managers: BallSpawner, ScoreManager, HitFeedbackManager.
 - UI: World Space Canvas with Hit/Served/Accuracy TMP labels.

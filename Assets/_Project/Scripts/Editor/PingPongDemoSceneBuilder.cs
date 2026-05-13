@@ -3,6 +3,7 @@ using System.IO;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using Unity.XR.PXR;
 using UnityEngine.XR;
@@ -12,12 +13,37 @@ public static class PingPongDemoSceneBuilder
     private const string DemoScenePath = "Assets/_Project/Scenes/01_PingPongDemo.unity";
     private const string PrefabRoot = "Assets/_Project/Prefabs/PingPong";
     private const string MaterialRoot = "Assets/_Project/Materials/PingPong";
+    private const string FontRoot = "Assets/_Project/Fonts";
+    private const string ElderCareUiFontPath = FontRoot + "/NotoSansCJKsc-Regular.otf";
     private const string ExternalRoot = "Assets/_Project/External/VRTableTennis";
     private const string OriginalRoot = ExternalRoot + "/Original";
     private const string OriginalModelRoot = OriginalRoot + "/Models";
     private const string OriginalAudioRoot = OriginalRoot + "/Audio";
     private const string AdaptedRoot = ExternalRoot + "/Adapted";
     private const string AdaptedMaterialRoot = AdaptedRoot + "/Materials";
+    private const string CustomRoot = "Assets/_Project/External/CustomPingPong";
+    private const string CustomModelRoot = CustomRoot + "/Models";
+    private static readonly string[] CustomPaddleModelPaths =
+    {
+        CustomModelRoot + "/PingPongPaddle.prefab",
+        CustomModelRoot + "/PingPongPaddle.fbx",
+        CustomModelRoot + "/PingPongPaddle.obj",
+        CustomModelRoot + "/Paddle.prefab",
+        CustomModelRoot + "/Paddle.fbx",
+        CustomModelRoot + "/Paddle.obj",
+        CustomModelRoot + "/Racket.prefab",
+        CustomModelRoot + "/Racket.fbx",
+        CustomModelRoot + "/Racket.obj"
+    };
+    private static readonly string[] CustomBallModelPaths =
+    {
+        CustomModelRoot + "/PingPongBall.prefab",
+        CustomModelRoot + "/PingPongBall.fbx",
+        CustomModelRoot + "/PingPongBall.obj",
+        CustomModelRoot + "/Ball.prefab",
+        CustomModelRoot + "/Ball.fbx",
+        CustomModelRoot + "/Ball.obj"
+    };
     private static readonly Vector3 TableColliderWorldSize = PingPongGeometry.TableColliderWorldSize;
     private static readonly Vector3 NetColliderWorldSize = PingPongGeometry.NetColliderWorldSize;
     private static readonly Vector3 PaddleColliderCenter = PingPongGeometry.PaddleColliderCenter;
@@ -90,7 +116,7 @@ public static class PingPongDemoSceneBuilder
         {
             DisableMixedRealitySceneState();
             EnsureFloor(environment.transform);
-            EnsureBackWall(environment.transform);
+            DisableBackWall(environment.transform);
             ConfigureMainCameraForVirtualReality();
         }
 
@@ -137,7 +163,7 @@ public static class PingPongDemoSceneBuilder
         spawner.spawnPoint = spawn.transform;
         spawner.targetPoint = target.transform;
         spawner.ballContainer = ballContainer.transform;
-        spawner.autoStartOnPlay = !mixedRealityMode;
+        spawner.autoStartOnPlay = false;
         spawner.serveSpeed = 3.0f;
         spawner.serveProfile = PingPongServeProfile.RandomMixed;
         spawner.upwardArc = 0.42f;
@@ -186,6 +212,13 @@ public static class PingPongDemoSceneBuilder
             uiCanvas);
         SetupPlayerTableSafety(tableBlocker, table.transform, spawner, dragHandle, playerBodyProxy);
         SetupInitialViewAligner(managers.transform, mixedRealityMode);
+        BuildElderCareHomeMenu(
+            uiRoot.transform,
+            managers.transform,
+            pingPong,
+            uiCanvas != null ? uiCanvas.gameObject : null,
+            spawner,
+            scoreManager);
 
         if (mixedRealityMode)
         {
@@ -221,7 +254,7 @@ public static class PingPongDemoSceneBuilder
         var pingPong = GetOrCreate("PingPong");
         EnsureFloor(environment.transform);
         EnsureLight(environment.transform);
-        EnsureBackWall(environment.transform);
+        DisableBackWall(environment.transform);
         RemoveGeneratedObject("Paddle_Left");
         var leftHand = SetupLeftHandGrabVisual(pingPong.transform);
         var table = GameObject.Find("Table");
@@ -269,10 +302,13 @@ public static class PingPongDemoSceneBuilder
         EnsureFolderPath(PrefabRoot);
         EnsureFolderPath("Assets/_Project/Materials");
         EnsureFolderPath(MaterialRoot);
+        EnsureFolderPath(FontRoot);
         EnsureFolderPath(ExternalRoot);
         EnsureFolderPath(OriginalRoot);
         EnsureFolderPath(AdaptedRoot);
         EnsureFolderPath(AdaptedMaterialRoot);
+        EnsureFolderPath(CustomRoot);
+        EnsureFolderPath(CustomModelRoot);
     }
 
     private static void OpenDemoSceneForBatchMode()
@@ -394,6 +430,34 @@ public static class PingPongDemoSceneBuilder
         return !string.IsNullOrEmpty(path) && path.StartsWith(AdaptedRoot);
     }
 
+    private static GameObject LoadPreferredPaddleModel()
+    {
+        return LoadFirstModel(CustomPaddleModelPaths) ??
+               AssetDatabase.LoadAssetAtPath<GameObject>($"{OriginalModelRoot}/PPPaddle.fbx");
+    }
+
+    private static GameObject LoadPreferredBallModel()
+    {
+        return LoadFirstModel(CustomBallModelPaths);
+    }
+
+    private static GameObject LoadFirstModel(IEnumerable<string> modelPaths)
+    {
+        foreach (var modelPath in modelPaths)
+        {
+            var model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath);
+            if (model != null) return model;
+        }
+
+        return null;
+    }
+
+    private static bool IsCustomModel(GameObject model)
+    {
+        var path = AssetDatabase.GetAssetPath(model);
+        return !string.IsNullOrEmpty(path) && path.StartsWith(CustomModelRoot);
+    }
+
     private static void CreateOrUpdateAdaptedPrefabs()
     {
         var tableMaterial = CreateOrLoadMaterial("VRTableTennis_TableGreen", new Color(0.03f, 0.48f, 0.18f), AdaptedMaterialRoot);
@@ -504,19 +568,30 @@ public static class PingPongDemoSceneBuilder
 
     private static void CreateOrUpdatePaddlePrefab(Material paddleMaterial, Material darkMaterial)
     {
-        var sourceModel = AssetDatabase.LoadAssetAtPath<GameObject>($"{OriginalModelRoot}/PPPaddle.fbx");
+        var sourceModel = LoadPreferredPaddleModel();
         if (sourceModel == null) return;
 
         var root = new GameObject("PingPongPaddle_Adapted");
         var visual = PrefabUtility.InstantiatePrefab(sourceModel) as GameObject;
         if (visual != null)
         {
-            visual.name = "Visual_PPPaddle";
+            var sourcePath = AssetDatabase.GetAssetPath(sourceModel);
+            visual.name = $"Visual_{Path.GetFileNameWithoutExtension(sourcePath)}";
             visual.transform.SetParent(root.transform, false);
             visual.transform.localPosition = Vector3.zero;
             visual.transform.localRotation = Quaternion.identity;
-            visual.transform.localScale = Vector3.one * 4f;
-            AssignMaterialsByName(visual, paddleMaterial, paddleMaterial, darkMaterial);
+            visual.transform.localScale = Vector3.one;
+
+            if (IsCustomModel(sourceModel))
+            {
+                StripVisualGameplayComponents(visual);
+                FitVisualToTarget(visual, PaddleColliderCenter, PaddleColliderSize, 0.95f, false);
+            }
+            else
+            {
+                visual.transform.localScale = Vector3.one * 4f;
+                AssignMaterialsByName(visual, paddleMaterial, paddleMaterial, darkMaterial);
+            }
         }
 
         var collider = root.AddComponent<BoxCollider>();
@@ -549,18 +624,33 @@ public static class PingPongDemoSceneBuilder
 
         try
         {
-            temp = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            temp = new GameObject("PingPongBall_Adapted");
             temp.name = "PingPongBall_Adapted";
-            temp.transform.localScale = PingPongGeometry.BallPrefabScale;
+            temp.transform.localScale = Vector3.one;
 
-            var renderer = temp.GetComponent<Renderer>();
-            if (renderer != null) renderer.sharedMaterial = ballMaterial;
-
-            var collider = temp.GetComponent<SphereCollider>();
-            if (collider == null)
+            var visualModel = LoadPreferredBallModel();
+            if (visualModel != null)
             {
-                collider = temp.AddComponent<SphereCollider>();
+                var visual = PrefabUtility.InstantiatePrefab(visualModel) as GameObject;
+                if (visual != null)
+                {
+                    var sourcePath = AssetDatabase.GetAssetPath(visualModel);
+                    visual.name = $"Visual_{Path.GetFileNameWithoutExtension(sourcePath)}";
+                    visual.transform.SetParent(temp.transform, false);
+                    visual.transform.localPosition = Vector3.zero;
+                    visual.transform.localRotation = Quaternion.identity;
+                    visual.transform.localScale = Vector3.one;
+                    StripVisualGameplayComponents(visual);
+                    FitVisualToTarget(visual, Vector3.zero, Vector3.one, 0.96f, true);
+                }
             }
+
+            if (temp.transform.childCount == 0)
+            {
+                CreateFallbackBallVisual(temp.transform, ballMaterial);
+            }
+
+            var collider = temp.AddComponent<SphereCollider>();
             collider.radius = 0.5f;
 
             ConfigureBallComponents(temp);
@@ -576,6 +666,109 @@ public static class PingPongDemoSceneBuilder
                 Object.DestroyImmediate(temp);
             }
         }
+    }
+
+    private static void CreateFallbackBallVisual(Transform parent, Material ballMaterial)
+    {
+        var visual = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        visual.name = "Visual_Sphere";
+        visual.transform.SetParent(parent, false);
+        visual.transform.localPosition = Vector3.zero;
+        visual.transform.localRotation = Quaternion.identity;
+        visual.transform.localScale = Vector3.one;
+
+        var collider = visual.GetComponent<Collider>();
+        if (collider != null)
+        {
+            Object.DestroyImmediate(collider);
+        }
+
+        var renderer = visual.GetComponent<Renderer>();
+        if (renderer != null) renderer.sharedMaterial = ballMaterial;
+    }
+
+    private static void StripVisualGameplayComponents(GameObject visual)
+    {
+        if (visual == null) return;
+
+        foreach (var child in visual.GetComponentsInChildren<Transform>(true))
+        {
+            GameObjectUtility.RemoveMonoBehavioursWithMissingScript(child.gameObject);
+        }
+
+        foreach (var joint in visual.GetComponentsInChildren<Joint>(true))
+        {
+            Object.DestroyImmediate(joint);
+        }
+
+        foreach (var rb in visual.GetComponentsInChildren<Rigidbody>(true))
+        {
+            Object.DestroyImmediate(rb);
+        }
+
+        foreach (var collider in visual.GetComponentsInChildren<Collider>(true))
+        {
+            Object.DestroyImmediate(collider);
+        }
+
+        foreach (var behaviour in visual.GetComponentsInChildren<MonoBehaviour>(true))
+        {
+            if (behaviour != null)
+            {
+                Object.DestroyImmediate(behaviour);
+            }
+        }
+    }
+
+    private static void FitVisualToTarget(GameObject visual, Vector3 targetCenter, Vector3 targetSize, float fill, bool includeY)
+    {
+        if (visual == null) return;
+        if (!TryGetRendererBounds(visual, out var bounds)) return;
+
+        var scale = float.PositiveInfinity;
+        AddScaleCandidate(ref scale, targetSize.x, bounds.size.x);
+        AddScaleCandidate(ref scale, targetSize.z, bounds.size.z);
+        if (includeY)
+        {
+            AddScaleCandidate(ref scale, targetSize.y, bounds.size.y);
+        }
+
+        if (float.IsInfinity(scale) || scale <= 0f) return;
+
+        visual.transform.localScale *= scale * Mathf.Max(0.01f, fill);
+
+        if (!TryGetRendererBounds(visual, out bounds)) return;
+        var parent = visual.transform.parent;
+        var localCenter = parent != null ? parent.InverseTransformPoint(bounds.center) : bounds.center;
+        visual.transform.localPosition += targetCenter - localCenter;
+    }
+
+    private static void AddScaleCandidate(ref float scale, float targetSize, float sourceSize)
+    {
+        if (targetSize <= 0.0001f || sourceSize <= 0.0001f) return;
+        scale = Mathf.Min(scale, targetSize / sourceSize);
+    }
+
+    private static bool TryGetRendererBounds(GameObject root, out Bounds bounds)
+    {
+        bounds = new Bounds();
+        var hasBounds = false;
+        foreach (var renderer in root.GetComponentsInChildren<Renderer>(true))
+        {
+            if (renderer == null) continue;
+
+            if (!hasBounds)
+            {
+                bounds = renderer.bounds;
+                hasBounds = true;
+            }
+            else
+            {
+                bounds.Encapsulate(renderer.bounds);
+            }
+        }
+
+        return hasBounds;
     }
 
     private static void AssignMaterialsByName(GameObject root, Material primary, Material net, Material dark)
@@ -1232,11 +1425,20 @@ public static class PingPongDemoSceneBuilder
         var canvas = EnsureComponent<Canvas>(canvasGo);
         if (canvas == null) return;
         canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = Camera.main;
+        canvas.sortingOrder = 10;
         canvasGo.transform.position = new Vector3(0f, 1.6f, 1.2f);
         canvasGo.transform.localScale = Vector3.one * 0.002f;
 
-        EnsureComponent<CanvasScaler>(canvasGo);
-        EnsureComponent<GraphicRaycaster>(canvasGo);
+        var scaler = EnsureComponent<CanvasScaler>(canvasGo);
+        if (scaler != null)
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
+        EnsureWorldCanvasRaycasters(canvasGo);
 
         score.hitText = CreateScoreText(canvasGo.transform, "HitText", new Vector2(0f, 150f));
         score.servedText = CreateScoreText(canvasGo.transform, "ServedText", new Vector2(0f, 90f));
@@ -1244,6 +1446,332 @@ public static class PingPongDemoSceneBuilder
         score.accuracyText = CreateScoreText(canvasGo.transform, "AccuracyText", new Vector2(0f, -30f));
         score.lastSpeedText = CreateScoreText(canvasGo.transform, "LastSpeedText", new Vector2(0f, -90f));
         score.lastSpinText = CreateScoreText(canvasGo.transform, "LastSpinText", new Vector2(0f, -150f));
+    }
+
+    private static ElderCareHomeMenu BuildElderCareHomeMenu(
+        Transform uiParent,
+        Transform managerParent,
+        GameObject pingPongRoot,
+        GameObject scoreCanvas,
+        BallSpawner spawner,
+        ScoreManager score)
+    {
+        RemoveChildIfExists(uiParent, "ElderCareHomeCanvas");
+        RemoveChildIfExists(managerParent, "ElderCareHomeMenu");
+
+        var controllerGo = GetOrCreate("ElderCareHomeMenu", managerParent);
+        var menu = EnsureComponent<ElderCareHomeMenu>(controllerGo);
+        if (menu == null) return null;
+
+        var canvasGo = GetOrCreateChild("ElderCareHomeCanvas", uiParent);
+        var canvas = EnsureComponent<Canvas>(canvasGo);
+        if (canvas == null) return menu;
+
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.worldCamera = Camera.main;
+        canvas.sortingOrder = 20;
+        canvasGo.transform.position = new Vector3(0f, 1.62f, 1.18f);
+        canvasGo.transform.rotation = Quaternion.identity;
+        canvasGo.transform.localScale = Vector3.one * 0.0015f;
+
+        var canvasRect = ConfigureRect(canvasGo, new Vector2(1920f, 1080f), Vector2.zero);
+        var scaler = EnsureComponent<CanvasScaler>(canvasGo);
+        if (scaler != null)
+        {
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            scaler.matchWidthOrHeight = 0.5f;
+        }
+
+        EnsureWorldCanvasRaycasters(canvasGo);
+        EnsureUiEventSystem();
+
+        CreateRoundedPanel(canvasRect, "Background", new Vector2(1920f, 1080f), Vector2.zero, new Color(0.05f, 0.08f, 0.14f, 0.96f), 0f);
+        CreateRoundedPanel(canvasRect, "CenterGlow", new Vector2(1340f, 760f), new Vector2(0f, 20f), new Color(0.22f, 0.31f, 0.45f, 0.16f), 260f);
+        CreateHomeStars(canvasRect);
+
+        CreateHomeText(canvasRect, "Title", "VR康养服务", new Vector2(0f, 395f), new Vector2(1200f, 120f), 92, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        CreateRoundedPanel(canvasRect, "TitleDivider", new Vector2(260f, 4f), new Vector2(0f, 320f), new Color(1f, 1f, 1f, 0.55f), 2f);
+
+        var cards = new List<ElderCareModuleCard>
+        {
+            CreateHomeModuleCard(canvasRect, menu, "Module_HealthGame", "pingpong", "健康游戏", "乒乓球、投篮等趣味运动", ElderCareIconType.Gamepad, new Vector2(-330f, 95f), new Color(0.18f, 0.46f, 0.91f), new Color(0.28f, 0.57f, 1f), new Color(0.23f, 0.51f, 0.96f, 0.55f)),
+            CreateHomeModuleCard(canvasRect, menu, "Module_Rehab", "rehab", "康复运动", "太极拳、八段锦养生功法", ElderCareIconType.Heart, new Vector2(330f, 95f), new Color(0.15f, 0.66f, 0.34f), new Color(0.25f, 0.79f, 0.43f), new Color(0.13f, 0.78f, 0.36f, 0.55f)),
+            CreateHomeModuleCard(canvasRect, menu, "Module_Travel", "travel", "VR旅游", "长城、故宫名胜古迹", ElderCareIconType.MapPin, new Vector2(-330f, -215f), new Color(0.55f, 0.29f, 0.89f), new Color(0.66f, 0.39f, 1f), new Color(0.62f, 0.33f, 0.97f, 0.55f)),
+            CreateHomeModuleCard(canvasRect, menu, "Module_Video", "video", "场景视频", "VR看房、生活场景体验", ElderCareIconType.Video, new Vector2(330f, -215f), new Color(0.91f, 0.42f, 0.12f), new Color(1f, 0.55f, 0.22f), new Color(0.98f, 0.45f, 0.12f, 0.55f))
+        };
+
+        var footer = CreateHomeText(canvasRect, "FooterHint", "使用手柄或手势选择功能", new Vector2(0f, -492f), new Vector2(900f, 70f), 30, FontStyle.Normal, new Color(1f, 1f, 1f, 0.62f), TextAnchor.MiddleCenter);
+        CreateGameplayHomeButton(scoreCanvas != null ? scoreCanvas.transform : null, menu);
+
+        menu.homeRoot = canvasGo;
+        menu.pingPongGameplayRoots = new[] { pingPongRoot, scoreCanvas };
+        menu.ballSpawner = spawner;
+        menu.scoreManager = score;
+        menu.initialViewAligner = Object.FindObjectOfType<VrInitialViewAligner>(true);
+        menu.statusText = footer;
+        menu.moduleCards = cards.ToArray();
+        menu.uiFont = CreateReadableUiFont(64);
+        menu.showHomeOnStart = true;
+        menu.clearBallsWhenLeavingPingPong = true;
+
+        EditorUtility.SetDirty(canvasGo);
+        EditorUtility.SetDirty(controllerGo);
+        return menu;
+    }
+
+    private static ElderCareModuleCard CreateHomeModuleCard(
+        RectTransform parent,
+        ElderCareHomeMenu menu,
+        string name,
+        string moduleId,
+        string title,
+        string description,
+        ElderCareIconType iconType,
+        Vector2 position,
+        Color normalColor,
+        Color hoverColor,
+        Color glowColor)
+    {
+        var root = GetOrCreateChild(name, parent);
+        var rootRect = ConfigureRect(root, new Vector2(570f, 260f), position);
+
+        var glow = CreateRoundedPanel(rootRect, "Glow", new Vector2(620f, 310f), Vector2.zero, new Color(glowColor.r, glowColor.g, glowColor.b, 0f), 48f);
+        glow.raycastTarget = false;
+
+        var panel = CreateRoundedPanel(rootRect, "Panel", new Vector2(570f, 260f), Vector2.zero, normalColor, 36f);
+        panel.raycastTarget = true;
+        var outline = EnsureComponent<Outline>(panel.gameObject);
+        if (outline != null)
+        {
+            outline.effectColor = new Color(1f, 1f, 1f, 0.24f);
+            outline.effectDistance = new Vector2(2f, -2f);
+        }
+
+        var icon = GetOrCreateChild("Icon", panel.transform);
+        var iconGraphic = EnsureComponent<ElderCareLineIcon>(icon);
+        iconGraphic.iconType = iconType;
+        iconGraphic.strokeWidth = 10f;
+        iconGraphic.color = Color.white;
+        iconGraphic.raycastTarget = false;
+        ConfigureRect(icon, new Vector2(122f, 122f), new Vector2(0f, 58f));
+
+        CreateHomeText(panel.transform as RectTransform, "Title", title, new Vector2(0f, -35f), new Vector2(510f, 72f), 52, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+        CreateHomeText(panel.transform as RectTransform, "Description", description, new Vector2(0f, -92f), new Vector2(510f, 48f), 26, FontStyle.Normal, new Color(1f, 1f, 1f, 0.9f), TextAnchor.MiddleCenter);
+
+        var indicator = CreateRoundedPanel(panel.transform as RectTransform, "SelectIndicator", new Vector2(56f, 56f), new Vector2(0f, -126f), new Color(1f, 1f, 1f, 0.18f), 28f);
+        indicator.raycastTarget = false;
+        var checkGo = GetOrCreateChild("Check", indicator.transform);
+        var check = EnsureComponent<ElderCareLineIcon>(checkGo);
+        check.iconType = ElderCareIconType.Check;
+        check.strokeWidth = 7f;
+        check.color = Color.white;
+        check.raycastTarget = false;
+        ConfigureRect(checkGo, new Vector2(36f, 36f), Vector2.zero);
+
+        var button = EnsureComponent<Button>(root);
+        if (button != null)
+        {
+            button.transition = Selectable.Transition.None;
+            button.targetGraphic = panel;
+        }
+
+        var card = EnsureComponent<ElderCareModuleCard>(root);
+        if (card != null)
+        {
+            card.menu = menu;
+            card.moduleId = moduleId;
+            card.moduleTitle = title;
+            card.cardTransform = rootRect;
+            card.cardGraphic = panel;
+            card.glowGraphic = glow;
+            card.normalColor = normalColor;
+            card.hoverColor = hoverColor;
+            card.glowColor = glowColor;
+            card.hoverScale = 1.05f;
+            card.pressedScale = 0.96f;
+        }
+
+        EditorUtility.SetDirty(root);
+        return card;
+    }
+
+    private static void CreateGameplayHomeButton(Transform canvasTransform, ElderCareHomeMenu menu)
+    {
+        if (canvasTransform == null || menu == null) return;
+
+        var root = GetOrCreateChild("BackHomeButton", canvasTransform);
+        var rootRect = ConfigureRect(root, new Vector2(320f, 88f), new Vector2(-720f, 405f));
+
+        var panel = CreateRoundedPanel(rootRect, "Panel", new Vector2(320f, 88f), Vector2.zero, new Color(0.06f, 0.12f, 0.2f, 0.88f), 22f);
+        panel.raycastTarget = true;
+
+        var iconGo = GetOrCreateChild("Icon", panel.transform);
+        var icon = EnsureComponent<ElderCareLineIcon>(iconGo);
+        if (icon != null)
+        {
+            icon.iconType = ElderCareIconType.ArrowLeft;
+            icon.strokeWidth = 7f;
+            icon.color = Color.white;
+            icon.raycastTarget = false;
+        }
+        ConfigureRect(iconGo, new Vector2(42f, 42f), new Vector2(-104f, 0f));
+
+        CreateHomeText(panel.transform as RectTransform, "Label", "返回首页", new Vector2(36f, 0f), new Vector2(190f, 58f), 32, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
+
+        var button = EnsureComponent<Button>(root);
+        if (button != null)
+        {
+            button.transition = Selectable.Transition.None;
+            button.targetGraphic = panel;
+        }
+
+        var homeButton = EnsureComponent<ElderCareHomeButton>(root);
+        if (homeButton != null)
+        {
+            homeButton.menu = menu;
+        }
+
+        EditorUtility.SetDirty(root);
+    }
+
+    private static Text CreateHomeText(RectTransform parent, string name, string value, Vector2 position, Vector2 size, int fontSize, FontStyle style, Color color, TextAnchor alignment)
+    {
+        var go = GetOrCreateChild(name, parent);
+        var text = EnsureComponent<Text>(go);
+        ConfigureRect(go, size, position);
+
+        if (text != null)
+        {
+            text.text = value;
+            text.font = CreateReadableUiFont(fontSize);
+            text.fontSize = fontSize;
+            text.fontStyle = style;
+            text.color = color;
+            text.alignment = alignment;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+            text.raycastTarget = false;
+        }
+
+        return text;
+    }
+
+    private static ElderCareRoundedPanel CreateRoundedPanel(RectTransform parent, string name, Vector2 size, Vector2 position, Color color, float radius)
+    {
+        var go = GetOrCreateChild(name, parent);
+        var panel = EnsureSingleRoundedPanel(go);
+        ConfigureRect(go, size, position);
+
+        if (panel != null)
+        {
+            panel.color = color;
+            panel.cornerRadius = radius;
+            panel.raycastTarget = false;
+        }
+
+        return panel;
+    }
+
+    private static ElderCareRoundedPanel EnsureSingleRoundedPanel(GameObject go)
+    {
+        if (go == null) return null;
+
+        var panels = go.GetComponents<ElderCareRoundedPanel>();
+        for (var i = 1; i < panels.Length; i++)
+        {
+            Object.DestroyImmediate(panels[i]);
+        }
+
+        if (panels.Length > 0 && panels[0] != null)
+        {
+            return panels[0];
+        }
+
+        return EnsureComponent<ElderCareRoundedPanel>(go);
+    }
+
+    private static void CreateHomeStars(RectTransform parent)
+    {
+        CreateRoundedPanel(parent, "Star_A", new Vector2(8f, 8f), new Vector2(-520f, 245f), new Color(1f, 1f, 1f, 0.33f), 4f);
+        CreateRoundedPanel(parent, "Star_B", new Vector2(7f, 7f), new Vector2(575f, 260f), new Color(1f, 1f, 1f, 0.28f), 4f);
+        CreateRoundedPanel(parent, "Star_C", new Vector2(6f, 6f), new Vector2(-650f, -210f), new Color(1f, 1f, 1f, 0.24f), 4f);
+        CreateRoundedPanel(parent, "Star_D", new Vector2(9f, 9f), new Vector2(610f, -245f), new Color(1f, 1f, 1f, 0.26f), 5f);
+    }
+
+    private static RectTransform ConfigureRect(GameObject go, Vector2 size, Vector2 anchoredPosition)
+    {
+        var rect = go.GetComponent<RectTransform>();
+        if (rect == null)
+        {
+            rect = go.AddComponent<RectTransform>();
+        }
+
+        rect.anchorMin = new Vector2(0.5f, 0.5f);
+        rect.anchorMax = new Vector2(0.5f, 0.5f);
+        rect.pivot = new Vector2(0.5f, 0.5f);
+        rect.sizeDelta = size;
+        rect.anchoredPosition = anchoredPosition;
+        rect.localRotation = Quaternion.identity;
+        rect.localScale = Vector3.one;
+        return rect;
+    }
+
+    private static Font CreateReadableUiFont(int size)
+    {
+        var bundledFont = AssetDatabase.LoadAssetAtPath<Font>(ElderCareUiFontPath);
+        if (bundledFont != null) return bundledFont;
+
+        var font = Font.CreateDynamicFontFromOSFont(
+            new[] { "Microsoft YaHei", "SimHei", "Noto Sans CJK SC", "Source Han Sans SC", "Arial" },
+            Mathf.Max(16, size));
+        return font != null ? font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+    }
+
+    private static void EnsureWorldCanvasRaycasters(GameObject canvasGo)
+    {
+        EnsureComponent<GraphicRaycaster>(canvasGo);
+        AddComponentIfTypeExists(canvasGo, "UnityEngine.XR.Interaction.Toolkit.UI.TrackedDeviceGraphicRaycaster, Unity.XR.Interaction.Toolkit");
+    }
+
+    private static void EnsureUiEventSystem()
+    {
+        var eventSystem = Object.FindObjectOfType<EventSystem>();
+        if (eventSystem == null)
+        {
+            eventSystem = new GameObject("EventSystem").AddComponent<EventSystem>();
+        }
+
+        var xrUiModule = AddComponentIfTypeExists(eventSystem.gameObject, "UnityEngine.XR.Interaction.Toolkit.UI.XRUIInputModule, Unity.XR.Interaction.Toolkit");
+        if (xrUiModule != null)
+        {
+            foreach (var module in eventSystem.GetComponents<BaseInputModule>())
+            {
+                if (module == null || module == xrUiModule) continue;
+                Object.DestroyImmediate(module);
+            }
+        }
+        else if (eventSystem.GetComponent<BaseInputModule>() == null)
+        {
+            var inputSystemModule = AddComponentIfTypeExists(eventSystem.gameObject, "UnityEngine.InputSystem.UI.InputSystemUIInputModule, Unity.InputSystem");
+            if (inputSystemModule == null && eventSystem.GetComponent<BaseInputModule>() == null)
+            {
+                EnsureComponent<StandaloneInputModule>(eventSystem.gameObject);
+            }
+        }
+
+        EditorUtility.SetDirty(eventSystem.gameObject);
+    }
+
+    private static Component AddComponentIfTypeExists(GameObject target, string typeName)
+    {
+        if (target == null || string.IsNullOrEmpty(typeName)) return null;
+
+        var type = System.Type.GetType(typeName);
+        if (type == null || !typeof(Component).IsAssignableFrom(type)) return null;
+
+        var existing = target.GetComponent(type);
+        return existing != null ? existing : target.AddComponent(type);
     }
 
     private static TMP_Text CreateScoreText(Transform canvasTransform, string name, Vector2 position)
@@ -1802,9 +2330,7 @@ public static class PingPongDemoSceneBuilder
         floor.transform.SetParent(environment);
         floor.SetActive(false);
 
-        var backWall = GetOrCreateSingleEnvironmentSurface("BackWall", environment, PrimitiveType.Cube);
-        backWall.transform.SetParent(environment);
-        backWall.SetActive(false);
+        DisableBackWall(environment);
 
         if (environment != null)
         {
@@ -1819,7 +2345,6 @@ public static class PingPongDemoSceneBuilder
         }
 
         EditorUtility.SetDirty(floor);
-        EditorUtility.SetDirty(backWall);
     }
 
     private static GameObject GetOrCreateSingleEnvironmentSurface(string name, Transform environment, PrimitiveType fallbackPrimitive)
@@ -1933,16 +2458,20 @@ public static class PingPongDemoSceneBuilder
         EditorUtility.SetDirty(lightGo);
     }
 
-    private static void EnsureBackWall(Transform parent)
+    private static void DisableBackWall(Transform parent)
     {
-        var backWall = GetOrCreateSingleEnvironmentSurface("BackWall", parent, PrimitiveType.Cube);
-        backWall.name = "BackWall";
+        var backWall = FindObjectByNameIncludingInactive("BackWall", parent);
+        if (backWall == null) return;
+
         backWall.transform.SetParent(parent);
-        backWall.transform.position = new Vector3(0f, 1.5f, 4.2f);
-        backWall.transform.rotation = Quaternion.identity;
-        backWall.transform.localScale = new Vector3(6f, 3f, 0.05f);
-        backWall.SetActive(true);
-        EnsureEnvironmentSurfaceCollider(backWall, true);
+        backWall.SetActive(false);
+
+        var renderer = backWall.GetComponent<Renderer>();
+        if (renderer != null) renderer.enabled = false;
+
+        var collider = backWall.GetComponent<Collider>();
+        if (collider != null) collider.enabled = false;
+
         EditorUtility.SetDirty(backWall);
     }
 

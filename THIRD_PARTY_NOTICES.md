@@ -12,4 +12,5 @@ Notes:
 - Cleaned prefabs are stored in `Assets/_Project/External/VRTableTennis/Adapted` and exclude old XR/Oculus/SteamVR/Photon scripts.
 - The upstream VRTableTennis repository is MIT licensed; its license text is preserved at `Assets/_Project/External/VRTableTennis/Original/LICENSE`.
 - Several copied FBX `.meta` files declare `licenseType: Store`; confirm the original asset-pack license before redistributing builds or source packages outside internal demo use.
+- The bundled Chinese UI font is Noto Sans CJK SC Regular from `notofonts/noto-cjk`, distributed under the SIL Open Font License 1.1. The license text is stored at `Assets/_Project/Fonts/NotoSansCJK_LICENSE.txt`.
 - The MR rehab UI bundles `NotoSansSC-VF.ttf` at `Assets/_Project/Fonts/Rehab/` so TextMeshPro can render Simplified Chinese on device. Noto Sans SC is part of Google Noto Fonts and is licensed under the SIL Open Font License 1.1.
