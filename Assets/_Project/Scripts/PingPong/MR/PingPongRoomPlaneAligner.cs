@@ -288,11 +288,11 @@ public class PingPongRoomPlaneAligner : MonoBehaviour
         placer.remoteGrabMaxDistanceMeters = 8f;
         placer.remoteDragMaxRayDistanceMeters = 8f;
         placer.remoteDragActivationRadiusMeters = 2.35f;
-        placer.positionSensitivity = 0.25f;
+        placer.positionSensitivity = 1.0f;
         placer.rotationSensitivity = 0.35f;
-        placer.maxMoveSpeedMetersPerSecond = 0.35f;
-        placer.positionSmoothingSeconds = 0.12f;
-        placer.dragDeadZoneMeters = 0.01f;
+        placer.maxMoveSpeedMetersPerSecond = 3.0f;
+        placer.positionSmoothingSeconds = 0.025f;
+        placer.dragDeadZoneMeters = 0.005f;
         placer.minUserTableDistanceMeters = 0.5f;
         placer.maxUserTableDistanceMeters = 3f;
         placer.enabled = true;

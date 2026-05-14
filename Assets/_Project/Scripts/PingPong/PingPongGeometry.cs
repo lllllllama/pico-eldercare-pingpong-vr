@@ -4,7 +4,7 @@ public static class PingPongGeometry
 {
     public const float TableWidth = 1.525f;
     public const float TableLength = 2.74f;
-    public const float TableTopHeight = 0.76f;
+    public const float TableTopHeight = 1.0f;
     public const float TableThickness = 0.08f;
     public const float NetHeight = 0.1525f;
     public const float NetThickness = 0.01f;

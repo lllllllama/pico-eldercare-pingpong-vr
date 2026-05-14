@@ -215,6 +215,12 @@ public class BallSpawner : MonoBehaviour
             pingPongBall = ballObj.AddComponent<PingPongBall>();
         }
 
+        var ballLayer = LayerMask.NameToLayer("Ball");
+        if (ballLayer >= 0)
+        {
+            SetLayerRecursively(ballObj, ballLayer);
+        }
+
         rb.drag = pingPongBall != null && pingPongBall.useAerodynamics ? 0f : PingPongGeometry.BallDrag;
         rb.angularDrag = PingPongGeometry.BallAngularDrag;
         rb.useGravity = true;
@@ -233,9 +239,27 @@ public class BallSpawner : MonoBehaviour
         collider.isTrigger = false;
         collider.sharedMaterial = GetBallPhysicsMaterial();
 
+        if (pingPongBall != null)
+        {
+            pingPongBall.ConfigureGameplayCollisionFilter(true);
+        }
+
         if (ballObj.GetComponent<BallLifetime>() == null) ballObj.AddComponent<BallLifetime>();
 
         return rb;
+    }
+
+    private static void SetLayerRecursively(GameObject root, int layer)
+    {
+        if (root == null || layer < 0) return;
+
+        foreach (var child in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (child != null)
+            {
+                child.gameObject.layer = layer;
+            }
+        }
     }
 
     private static PhysicMaterial GetBallPhysicsMaterial()

@@ -49,6 +49,7 @@ public static class RehabSceneBuilder
         public Button baduanjinButton;
         public Button taiChiButton;
         public Button backButton;
+        public Button trainingBackButton;
     }
 
     [MenuItem("Tools/PICO ElderCare/Build Main Entry Scene")]
@@ -229,9 +230,14 @@ public static class RehabSceneBuilder
         modeSelectUi.baduanjinButton = rehabUi.baduanjinButton;
         modeSelectUi.taiChiButton = rehabUi.taiChiButton;
         modeSelectUi.backButton = rehabUi.backButton;
+        modeSelectUi.homeMenu = homeMenu;
         modeSelectUi.sessionManager = session;
         modeSelectUi.showTrainingSelectOnStart = true;
         session.modeSelectUI = modeSelectUi;
+        if (rehabUi.trainingBackButton != null)
+        {
+            UnityEventTools.AddPersistentListener(rehabUi.trainingBackButton.onClick, modeSelectUi.ShowTrainingSelectPanel);
+        }
 
         if (trainingAreaDragHandle != null)
         {
@@ -522,8 +528,7 @@ public static class RehabSceneBuilder
         ui.completion = CreateText(ui.rehabTrainingPanel.transform, "CompletionText", "完成度 0%", 28, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(205f, 10f), new Vector2(360f, 50f));
         ui.safety = CreateText(ui.rehabTrainingPanel.transform, "SafetyPromptText", "保持舒适幅度，准备开始", 24, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -56f), new Vector2(800f, 52f));
         ui.debug = CreateText(ui.rehabTrainingPanel.transform, "DebugText", "动作 1/8 | 步骤 1/1 | 保持 0.0s | 距中心 0.00m", 20, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -126f), new Vector2(820f, 50f));
-        var homeButton = CreateButton(ui.rehabTrainingPanel.transform, "HomeButton", "返回主页", new Vector2(330f, -198f), new Vector2(180f, 54f));
-        UnityEventTools.AddPersistentListener(homeButton.onClick, homeMenu.LoadMainEntry);
+        ui.trainingBackButton = CreateButton(ui.rehabTrainingPanel.transform, "HomeButton", "返回", new Vector2(330f, -198f), new Vector2(180f, 54f));
 
         CreateText(ui.trainingResultPanel.transform, "Title", "训练结果", 42, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 95f), new Vector2(800f, 76f));
         CreateText(ui.trainingResultPanel.transform, "Summary", "训练结束后结果会自动保存到本机", 28, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, 0f), new Vector2(760f, 90f));

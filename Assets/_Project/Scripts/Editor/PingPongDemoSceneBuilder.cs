@@ -943,6 +943,7 @@ public static class PingPongDemoSceneBuilder
         if (rb == null) return;
 
         ball.transform.localScale = PingPongGeometry.BallPrefabScale;
+        SetLayerRecursively(ball, "Ball");
         rb.mass = PingPongGeometry.BallMass;
         var pingPongBall = EnsureComponent<PingPongBall>(ball);
         rb.drag = pingPongBall != null && pingPongBall.useAerodynamics ? 0f : PingPongGeometry.BallDrag;
@@ -957,6 +958,11 @@ public static class PingPongDemoSceneBuilder
         {
             collider.radius = 0.5f;
             collider.isTrigger = false;
+        }
+
+        if (pingPongBall != null)
+        {
+            pingPongBall.ConfigureGameplayCollisionFilter(true);
         }
 
         EnsureComponent<BallLifetime>(ball);
@@ -1344,14 +1350,14 @@ public static class PingPongDemoSceneBuilder
         safety.playerBodyProxy = playerBodyProxy != null ? playerBodyProxy : Object.FindObjectOfType<PingPongPlayerBodyProxy>(true);
         safety.ballSpawners = spawner != null ? new[] { spawner } : Object.FindObjectsOfType<BallSpawner>(true);
         safety.tableSize = new Vector2(PingPongGeometry.TableWidth, PingPongGeometry.TableLength);
-        safety.safetyMargin = 0.35f;
-        safety.hardMargin = 0.15f;
+        safety.safetyMargin = 0f;
+        safety.hardMargin = 0f;
         safety.repulsionStrength = 0.6f;
         safety.maxRepulsionSpeed = 0.4f;
-        safety.warningOnlyDistance = 0.35f;
-        safety.hardPauseDistance = 0.10f;
-        safety.blockedMarginMeters = 0.15f;
-        safety.warningMarginMeters = 0.35f;
+        safety.warningOnlyDistance = 0f;
+        safety.hardPauseDistance = 0f;
+        safety.blockedMarginMeters = 0f;
+        safety.warningMarginMeters = 0f;
         safety.resumeStableSeconds = 0.5f;
         safety.tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
         safety.controlServing = true;
@@ -1427,7 +1433,8 @@ public static class PingPongDemoSceneBuilder
         canvas.renderMode = RenderMode.WorldSpace;
         canvas.worldCamera = Camera.main;
         canvas.sortingOrder = 10;
-        canvasGo.transform.position = new Vector3(0f, 1.6f, 1.2f);
+        canvasGo.transform.position = new Vector3(-0.7f, 1.5f, 3.15f);
+        canvasGo.transform.rotation = Quaternion.identity;
         canvasGo.transform.localScale = Vector3.one * 0.002f;
 
         var scaler = EnsureComponent<CanvasScaler>(canvasGo);
@@ -1782,9 +1789,13 @@ public static class PingPongDemoSceneBuilder
 
         var rect = go.GetComponent<RectTransform>();
         rect.sizeDelta = new Vector2(560f, 72f);
-        rect.anchoredPosition = position;
+        rect.anchoredPosition3D = new Vector3(position.x, position.y, 0f);
+        rect.localRotation = Quaternion.identity;
+        rect.localScale = Vector3.one;
         text.fontSize = 48;
+        text.alignment = TextAlignmentOptions.Left;
         text.color = Color.white;
+        text.raycastTarget = false;
         return text;
     }
 
@@ -1936,11 +1947,11 @@ public static class PingPongDemoSceneBuilder
             dragHandle.savePlacementOnRelease = false;
             dragHandle.placementSaveKey = "PingPong.MixedReality.Table";
             dragHandle.syncedControllerLimiters = Object.FindObjectsOfType<ControllerTableCollisionLimiter>(true);
-            dragHandle.positionSensitivity = 0.25f;
+            dragHandle.positionSensitivity = 1.0f;
             dragHandle.rotationSensitivity = 0.35f;
-            dragHandle.maxMoveSpeedMetersPerSecond = 0.35f;
-            dragHandle.positionSmoothingSeconds = 0.12f;
-            dragHandle.dragDeadZoneMeters = 0.01f;
+            dragHandle.maxMoveSpeedMetersPerSecond = 3.0f;
+            dragHandle.positionSmoothingSeconds = 0.025f;
+            dragHandle.dragDeadZoneMeters = 0.005f;
             dragHandle.minUserTableDistanceMeters = 0.5f;
             dragHandle.maxUserTableDistanceMeters = 3f;
             dragHandle.enableLocalHandleDrag = false;
@@ -2063,11 +2074,11 @@ public static class PingPongDemoSceneBuilder
             tablePlacer.remoteGrabMaxDistanceMeters = 8f;
             tablePlacer.remoteDragMaxRayDistanceMeters = 8f;
             tablePlacer.remoteDragActivationRadiusMeters = 2.35f;
-            tablePlacer.positionSensitivity = 0.25f;
+            tablePlacer.positionSensitivity = 1.0f;
             tablePlacer.rotationSensitivity = 0.35f;
-            tablePlacer.maxMoveSpeedMetersPerSecond = 0.35f;
-            tablePlacer.positionSmoothingSeconds = 0.12f;
-            tablePlacer.dragDeadZoneMeters = 0.01f;
+            tablePlacer.maxMoveSpeedMetersPerSecond = 3.0f;
+            tablePlacer.positionSmoothingSeconds = 0.025f;
+            tablePlacer.dragDeadZoneMeters = 0.005f;
             tablePlacer.minUserTableDistanceMeters = 0.5f;
             tablePlacer.maxUserTableDistanceMeters = 3f;
             EditorUtility.SetDirty(placerObject);
@@ -2101,10 +2112,10 @@ public static class PingPongDemoSceneBuilder
         remoteDrag.openSpaceTablePlacer = Object.FindObjectOfType<PingPongOpenSpaceTablePlacer>(true);
         remoteDrag.ballSpawners = Object.FindObjectsOfType<BallSpawner>(true);
         remoteDrag.remoteGrabMaxDistanceMeters = 8f;
-        remoteDrag.positionSensitivity = 0.25f;
-        remoteDrag.maxMoveSpeed = 0.35f;
-        remoteDrag.positionSmoothing = 0.12f;
-        remoteDrag.dragDeadZone = 0.01f;
+        remoteDrag.positionSensitivity = 1.0f;
+        remoteDrag.maxMoveSpeed = 3.0f;
+        remoteDrag.positionSmoothing = 0.025f;
+        remoteDrag.dragDeadZone = 0.005f;
         remoteDrag.minDistanceFromUser = 0.7f;
         remoteDrag.maxDistanceFromUser = 3.0f;
         remoteDrag.controlServing = true;
@@ -2120,6 +2131,7 @@ public static class PingPongDemoSceneBuilder
         sensingRoot.transform.localPosition = Vector3.zero;
         sensingRoot.transform.localRotation = Quaternion.identity;
         sensingRoot.transform.localScale = Vector3.one;
+        SetLayerRecursively(sensingRoot, "RoomSensing");
 
         var planeTemplate = SetupRoomSensingTemplate(
             sensingRoot.transform,
@@ -2147,6 +2159,9 @@ public static class PingPongDemoSceneBuilder
             visibilityGuard.roomSensingRoot = sensingRoot.transform;
             visibilityGuard.hideAllRenderersUnderRoot = true;
             visibilityGuard.addMissingMeshColliders = true;
+            visibilityGuard.ignoreBallCollision = true;
+            visibilityGuard.roomSensingPhysicsLayerName = "RoomSensing";
+            visibilityGuard.ballPhysicsLayerName = "Ball";
             visibilityGuard.scanIntervalSeconds = 0.15f;
         }
 
@@ -2159,6 +2174,7 @@ public static class PingPongDemoSceneBuilder
         template.transform.localPosition = Vector3.zero;
         template.transform.localRotation = Quaternion.identity;
         template.transform.localScale = Vector3.one;
+        SetLayerRecursively(template, "RoomSensing");
 
         EnsureComponent<MeshFilter>(template);
         var renderer = EnsureComponent<MeshRenderer>(template);

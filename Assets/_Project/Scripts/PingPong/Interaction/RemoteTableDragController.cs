@@ -18,10 +18,10 @@ public class RemoteTableDragController : MonoBehaviour
     public LayerMask tableRaycastLayers = ~0;
 
     public float remoteGrabMaxDistanceMeters = 8f;
-    public float positionSensitivity = 0.45f;
-    public float maxMoveSpeed = 0.65f;
-    public float positionSmoothing = 0.08f;
-    public float dragDeadZone = 0.01f;
+    public float positionSensitivity = 1.0f;
+    public float maxMoveSpeed = 3.0f;
+    public float positionSmoothing = 0.025f;
+    public float dragDeadZone = 0.005f;
     public float minDistanceFromUser = 0.7f;
     public float maxDistanceFromUser = 3.0f;
     public bool controlServing = true;

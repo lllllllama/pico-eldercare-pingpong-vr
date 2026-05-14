@@ -20,7 +20,7 @@ public static class PingPongPhysicsSelfTests
         OpenSpacePlacementWaitsForRoomSensingColliders();
         OpenSpacePlacementAvoidsTableObstacle();
         OpenSpaceTablePlacementMovesServeReferences();
-        PlayerTableSafetyDetectsWarningAndBlockedZones();
+        PlayerTableSafetyUsesTableFootprintOnly();
         PlayerTableSafetyUsesHeadPositionOnly();
         Debug.Log("PingPong physics self tests passed.");
     }
@@ -298,7 +298,7 @@ public static class PingPongPhysicsSelfTests
         }
     }
 
-    private static void PlayerTableSafetyDetectsWarningAndBlockedZones()
+    private static void PlayerTableSafetyUsesTableFootprintOnly()
     {
         var table = new GameObject("Table");
         var safetyObject = new GameObject("TablePlayerBlocker");
@@ -308,23 +308,23 @@ public static class PingPongPhysicsSelfTests
             var safety = safetyObject.AddComponent<PingPongPlayerTableSafety>();
             safety.tableTransform = table.transform;
             safety.tableSize = new Vector2(PingPongGeometry.TableWidth, PingPongGeometry.TableLength);
-            safety.safetyMargin = 0.35f;
-            safety.hardMargin = 0.15f;
-            safety.warningOnlyDistance = 0.35f;
+            safety.safetyMargin = 0f;
+            safety.hardMargin = 0f;
+            safety.warningOnlyDistance = 0f;
 
             AssertTrue(
                 safety.EvaluateHeadPosition(table.transform.position) == PingPongTableSafetyState.Blocked,
                 "Safety boundary should block when the HMD is inside the table footprint.");
 
-            var warningPoint = table.transform.position + Vector3.right * (PingPongGeometry.TableWidth * 0.5f + 0.42f);
+            var warningPoint = table.transform.position + Vector3.right * (PingPongGeometry.TableWidth * 0.5f - 0.01f);
             AssertTrue(
-                safety.EvaluateHeadPosition(warningPoint) == PingPongTableSafetyState.Warning,
-                "Safety boundary should warn in the outer buffer zone.");
+                safety.EvaluateHeadPosition(warningPoint) == PingPongTableSafetyState.Blocked,
+                "Safety boundary should block inside the table footprint.");
 
-            var clearPoint = table.transform.position + Vector3.right * (PingPongGeometry.TableWidth * 0.5f + 1.0f);
+            var clearPoint = table.transform.position + Vector3.right * (PingPongGeometry.TableWidth * 0.5f + 0.01f);
             AssertTrue(
                 safety.EvaluateHeadPosition(clearPoint) == PingPongTableSafetyState.Clear,
-                "Safety boundary should clear outside the warning buffer.");
+                "Safety boundary should clear outside the table footprint.");
         }
         finally
         {

@@ -6,6 +6,9 @@ public class PingPongRoomSensingVisibilityGuard : MonoBehaviour
     public Transform roomSensingRoot;
     public bool hideAllRenderersUnderRoot = true;
     public bool addMissingMeshColliders = true;
+    public bool ignoreBallCollision = true;
+    public string roomSensingPhysicsLayerName = "RoomSensing";
+    public string ballPhysicsLayerName = "Ball";
     public float scanIntervalSeconds = 0.15f;
 
     private float _nextScanTime;
@@ -13,6 +16,7 @@ public class PingPongRoomSensingVisibilityGuard : MonoBehaviour
     private void OnEnable()
     {
         _nextScanTime = 0f;
+        ConfigureBallCollisionIgnore();
         HideRoomSensingVisuals();
     }
 
@@ -26,9 +30,11 @@ public class PingPongRoomSensingVisibilityGuard : MonoBehaviour
     public void HideRoomSensingVisuals()
     {
         ResolveRoot();
+        ConfigureBallCollisionIgnore();
 
         if (roomSensingRoot != null && hideAllRenderersUnderRoot)
         {
+            ApplyRoomSensingLayerRecursively(roomSensingRoot);
             HideRenderersUnder(roomSensingRoot);
         }
 
@@ -60,6 +66,8 @@ public class PingPongRoomSensingVisibilityGuard : MonoBehaviour
 
     private void HideRendererAndPrepareCollider(Transform target)
     {
+        ApplyRoomSensingLayer(target);
+
         var renderer = target.GetComponent<Renderer>();
         if (renderer != null)
         {
@@ -71,6 +79,44 @@ public class PingPongRoomSensingVisibilityGuard : MonoBehaviour
         {
             target.gameObject.AddComponent<MeshCollider>();
         }
+    }
+
+    private void ConfigureBallCollisionIgnore()
+    {
+        if (!ignoreBallCollision) return;
+        if (string.IsNullOrEmpty(roomSensingPhysicsLayerName) || string.IsNullOrEmpty(ballPhysicsLayerName)) return;
+
+        var roomSensingLayer = LayerMask.NameToLayer(roomSensingPhysicsLayerName);
+        var ballLayer = LayerMask.NameToLayer(ballPhysicsLayerName);
+        if (roomSensingLayer < 0 || ballLayer < 0) return;
+
+        Physics.IgnoreLayerCollision(ballLayer, roomSensingLayer, true);
+    }
+
+    private void ApplyRoomSensingLayerRecursively(Transform root)
+    {
+        if (string.IsNullOrEmpty(roomSensingPhysicsLayerName)) return;
+
+        var roomSensingLayer = LayerMask.NameToLayer(roomSensingPhysicsLayerName);
+        if (roomSensingLayer < 0 || root == null) return;
+
+        foreach (var child in root.GetComponentsInChildren<Transform>(true))
+        {
+            if (child != null)
+            {
+                child.gameObject.layer = roomSensingLayer;
+            }
+        }
+    }
+
+    private void ApplyRoomSensingLayer(Transform target)
+    {
+        if (string.IsNullOrEmpty(roomSensingPhysicsLayerName)) return;
+
+        var roomSensingLayer = LayerMask.NameToLayer(roomSensingPhysicsLayerName);
+        if (roomSensingLayer < 0 || target == null) return;
+
+        target.gameObject.layer = roomSensingLayer;
     }
 
     private void ResolveRoot()

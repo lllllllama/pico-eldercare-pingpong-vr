@@ -27,11 +27,11 @@ public class TableDragHandle : MonoBehaviour
     public bool savePlacementOnRelease;
     public string placementSaveKey = "PingPong.MixedReality.Table";
     public Transform hmdTransform;
-    public float positionSensitivity = 0.25f;
+    public float positionSensitivity = 1.0f;
     public float rotationSensitivity = 0.35f;
-    public float maxMoveSpeedMetersPerSecond = 0.35f;
-    public float positionSmoothingSeconds = 0.12f;
-    public float dragDeadZoneMeters = 0.01f;
+    public float maxMoveSpeedMetersPerSecond = 3.0f;
+    public float positionSmoothingSeconds = 0.025f;
+    public float dragDeadZoneMeters = 0.005f;
     public float minUserTableDistanceMeters = 0.5f;
     public float maxUserTableDistanceMeters = 3f;
     public bool enableLocalHandleDrag = false;

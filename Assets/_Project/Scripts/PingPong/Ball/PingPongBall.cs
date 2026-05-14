@@ -17,6 +17,10 @@ public class PingPongBall : MonoBehaviour
     public float maxSpeed = 9f;
     public bool enableSweptSurfaceFallback = true;
     public LayerMask sweptSurfaceLayers = ~0;
+    public bool ignoreNonGameplayColliders = true;
+    public float collisionFilterRefreshInterval = 0.2f;
+    public string ballPhysicsLayerName = "Ball";
+    public string ignoredRoomSensingLayerName = "RoomSensing";
     public bool useAerodynamics = true;
     public float airDensity = 1.27f;
     public float dragCoefficient = 0.5f;
@@ -32,10 +36,13 @@ public class PingPongBall : MonoBehaviour
     private ControllerBallGrabber _activeGrabber;
     private Collider _lastSurfaceCollider;
     private Vector3 _lastSweepPosition;
+    private Vector3 _lastPhysicsVelocity;
+    private Vector3 _lastPhysicsAngularVelocity;
     private bool _hitRegistered;
     private float _ignoreGrabUntilTime;
     private float _lastPaddleHitTime = -1f;
     private float _lastSurfaceHitTime = -1f;
+    private float _nextCollisionFilterRefreshTime;
 
     public bool IsGrabbed => _activeGrabber != null;
     public bool CanBeGrabbed => !IsGrabbed && Time.time >= _ignoreGrabUntilTime;
@@ -46,6 +53,7 @@ public class PingPongBall : MonoBehaviour
     private void Awake()
     {
         ConfigureRigidbody();
+        ConfigureGameplayCollisionFilter(true);
         _sphereCollider = GetComponent<SphereCollider>();
         _lastSweepPosition = transform.position;
     }
@@ -55,6 +63,30 @@ public class PingPongBall : MonoBehaviour
         _lastSweepPosition = transform.position;
         _lastSurfaceCollider = null;
         _lastSurfaceHitTime = -1f;
+        ConfigureGameplayCollisionFilter(true);
+    }
+
+    public void ExcludeIgnoredRoomSensingLayerFromSweep()
+    {
+        if (string.IsNullOrEmpty(ignoredRoomSensingLayerName)) return;
+
+        var ignoredLayer = LayerMask.NameToLayer(ignoredRoomSensingLayerName);
+        if (ignoredLayer < 0) return;
+
+        sweptSurfaceLayers = sweptSurfaceLayers & ~(1 << ignoredLayer);
+    }
+
+    public void ConfigureGameplayCollisionFilter(bool forceRefresh = false)
+    {
+        ConfigureBallLayer();
+        ExcludeIgnoredRoomSensingLayerFromSweep();
+
+        if (forceRefresh)
+        {
+            _nextCollisionFilterRefreshTime = 0f;
+        }
+
+        RefreshIgnoredNonGameplayColliders();
     }
 
     private void FixedUpdate()
@@ -65,6 +97,9 @@ public class PingPongBall : MonoBehaviour
             return;
         }
 
+        _lastPhysicsVelocity = _rb.velocity;
+        _lastPhysicsAngularVelocity = _rb.angularVelocity;
+        RefreshIgnoredNonGameplayColliders();
         ApplyAerodynamics();
 
         if (!enableSweptSurfaceFallback)
@@ -79,6 +114,11 @@ public class PingPongBall : MonoBehaviour
 
     private void OnCollisionEnter(Collision collision)
     {
+        if (TryIgnoreNonGameplayCollision(collision))
+        {
+            return;
+        }
+
         var tracker = collision.collider.GetComponentInParent<PaddleVelocityTracker>();
         if (tracker != null)
         {
@@ -107,6 +147,11 @@ public class PingPongBall : MonoBehaviour
         ApplySurfaceBounce(surface, collision.collider, surfaceNormal, surfacePoint, false);
     }
 
+    private void OnCollisionStay(Collision collision)
+    {
+        TryIgnoreNonGameplayCollision(collision);
+    }
+
     private void OnTriggerEnter(Collider other)
     {
         TryApplyTriggerInteraction(other);
@@ -115,6 +160,145 @@ public class PingPongBall : MonoBehaviour
     private void OnTriggerStay(Collider other)
     {
         TryApplyTriggerInteraction(other);
+    }
+
+    private void ConfigureBallLayer()
+    {
+        if (string.IsNullOrEmpty(ballPhysicsLayerName)) return;
+
+        var ballLayer = LayerMask.NameToLayer(ballPhysicsLayerName);
+        if (ballLayer < 0) return;
+
+        foreach (var child in GetComponentsInChildren<Transform>(true))
+        {
+            if (child != null)
+            {
+                child.gameObject.layer = ballLayer;
+            }
+        }
+    }
+
+    private void RefreshIgnoredNonGameplayColliders()
+    {
+        if (!ignoreNonGameplayColliders) return;
+        if (!Application.isPlaying) return;
+        if (Time.time < _nextCollisionFilterRefreshTime) return;
+
+        _nextCollisionFilterRefreshTime = Time.time + Mathf.Max(0.02f, collisionFilterRefreshInterval);
+
+        var ownColliders = GetComponentsInChildren<Collider>(true);
+        if (ownColliders == null || ownColliders.Length == 0) return;
+
+        foreach (var candidate in FindObjectsOfType<Collider>(false))
+        {
+            if (candidate == null || !candidate.enabled) continue;
+            if (IsOwnCollider(candidate, ownColliders)) continue;
+
+            var ignoreCollision = !IsGameplayCollider(candidate);
+
+            foreach (var ownCollider in ownColliders)
+            {
+                if (ownCollider != null && ownCollider.enabled)
+                {
+                    Physics.IgnoreCollision(ownCollider, candidate, ignoreCollision);
+                }
+            }
+        }
+    }
+
+    private bool TryIgnoreNonGameplayCollision(Collision collision)
+    {
+        if (!ignoreNonGameplayColliders || collision == null || collision.collider == null) return false;
+        if (IsGameplayCollider(collision.collider)) return false;
+
+        var ownColliders = GetComponentsInChildren<Collider>(true);
+        foreach (var ownCollider in ownColliders)
+        {
+            if (ownCollider != null && ownCollider.enabled)
+            {
+                Physics.IgnoreCollision(ownCollider, collision.collider, true);
+            }
+        }
+
+        if (_rb != null && !_rb.isKinematic)
+        {
+            _rb.velocity = _lastPhysicsVelocity;
+            _rb.angularVelocity = _lastPhysicsAngularVelocity;
+        }
+
+        _lastSweepPosition = transform.position;
+        return true;
+    }
+
+    private bool IsGameplayCollider(Collider candidate)
+    {
+        if (candidate == null) return false;
+        if (candidate.GetComponentInParent<PingPongBall>() != null) return false;
+        if (candidate.GetComponentInParent<PlayerTableBoundary>() != null) return false;
+        if (candidate.GetComponentInParent<PaddleVelocityTracker>() != null) return true;
+
+        var surface = candidate.GetComponent<PingPongSurface>() ?? candidate.GetComponentInParent<PingPongSurface>();
+        if (surface != null)
+        {
+            return IsGameplaySurface(surface.surfaceType);
+        }
+
+        return HasGameplayName(candidate.transform) && HasAncestorNamed(candidate.transform, "PingPong");
+    }
+
+    private static bool IsGameplaySurface(PingPongSurfaceType surfaceType)
+    {
+        return surfaceType == PingPongSurfaceType.Table ||
+               surfaceType == PingPongSurfaceType.Net ||
+               surfaceType == PingPongSurfaceType.PaddleBody ||
+               surfaceType == PingPongSurfaceType.PaddleHitZone;
+    }
+
+    private static bool HasGameplayName(Transform transform)
+    {
+        while (transform != null)
+        {
+            var lowerName = transform.name.ToLowerInvariant();
+            if (lowerName.Contains("table") ||
+                lowerName.Contains("net") ||
+                lowerName.Contains("paddle") ||
+                lowerName.Contains("racket"))
+            {
+                return true;
+            }
+
+            transform = transform.parent;
+        }
+
+        return false;
+    }
+
+    private static bool HasAncestorNamed(Transform transform, string ancestorName)
+    {
+        while (transform != null)
+        {
+            if (transform.name == ancestorName)
+            {
+                return true;
+            }
+
+            transform = transform.parent;
+        }
+
+        return false;
+    }
+
+    private static bool IsOwnCollider(Collider candidate, Collider[] ownColliders)
+    {
+        foreach (var ownCollider in ownColliders)
+        {
+            if (candidate == ownCollider)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void SetGrabber(ControllerBallGrabber grabber)
@@ -400,6 +584,7 @@ public class PingPongBall : MonoBehaviour
         {
             var hit = _sweepHits[i];
             if (hit.collider == null || hit.collider.GetComponentInParent<PingPongBall>() == this) continue;
+            if (!IsGameplayCollider(hit.collider)) continue;
 
             var surface = PingPongSurface.Find(hit.collider);
             if (surface == null || !surface.useSweptFallback) continue;

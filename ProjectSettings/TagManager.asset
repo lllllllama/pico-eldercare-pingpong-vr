@@ -22,7 +22,7 @@ TagManager:
   - Ball
   - Table
   - TableSafetyZone
-  -
+  - RoomSensing
   -
   -
   -

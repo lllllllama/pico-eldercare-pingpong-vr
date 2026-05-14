@@ -42,11 +42,11 @@ public class PingPongOpenSpaceTablePlacer : MonoBehaviour
     public float remoteGrabMaxDistanceMeters = 8f;
     public float remoteDragActivationRadiusMeters = 1.85f;
     public float remoteDragMaxRayDistanceMeters = 6f;
-    public float positionSensitivity = 0.25f;
+    public float positionSensitivity = 1.0f;
     public float rotationSensitivity = 0.35f;
-    public float maxMoveSpeedMetersPerSecond = 0.35f;
-    public float positionSmoothingSeconds = 0.12f;
-    public float dragDeadZoneMeters = 0.01f;
+    public float maxMoveSpeedMetersPerSecond = 3.0f;
+    public float positionSmoothingSeconds = 0.025f;
+    public float dragDeadZoneMeters = 0.005f;
     public float minUserTableDistanceMeters = 0.5f;
     public float maxUserTableDistanceMeters = 3f;
 
@@ -368,6 +368,9 @@ public class PingPongOpenSpaceTablePlacer : MonoBehaviour
         guard.roomSensingRoot = roomSensingRoot;
         guard.hideAllRenderersUnderRoot = true;
         guard.addMissingMeshColliders = true;
+        guard.ignoreBallCollision = true;
+        guard.roomSensingPhysicsLayerName = "RoomSensing";
+        guard.ballPhysicsLayerName = "Ball";
     }
 
     private void EnsureBackgroundVisualSuppressor()
@@ -429,6 +432,12 @@ public class PingPongOpenSpaceTablePlacer : MonoBehaviour
         {
             if (transform == null) continue;
             if (!IsRoomSensingTemplate(transform.name)) continue;
+
+            var roomSensingLayer = LayerMask.NameToLayer("RoomSensing");
+            if (roomSensingLayer >= 0)
+            {
+                transform.gameObject.layer = roomSensingLayer;
+            }
 
             var renderer = transform.GetComponent<Renderer>();
             if (renderer != null)

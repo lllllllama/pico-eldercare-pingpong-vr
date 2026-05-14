@@ -20,14 +20,14 @@ public class PingPongPlayerTableSafety : MonoBehaviour
     public PingPongPlayerBodyProxy playerBodyProxy;
     public BallSpawner[] ballSpawners;
     public Vector2 tableSize = new Vector2(PingPongGeometry.TableWidth, PingPongGeometry.TableLength);
-    public float safetyMargin = 0.20f;
-    public float hardMargin = 0.08f;
+    public float safetyMargin = 0f;
+    public float hardMargin = 0f;
     public float repulsionStrength = 0.45f;
     public float maxRepulsionSpeed = 0.35f;
-    public float warningOnlyDistance = 0.35f;
-    public float hardPauseDistance = 0.06f;
-    public float blockedMarginMeters = 0.25f;
-    public float warningMarginMeters = 0.35f;
+    public float warningOnlyDistance = 0f;
+    public float hardPauseDistance = 0f;
+    public float blockedMarginMeters = 0f;
+    public float warningMarginMeters = 0f;
     public float resumeStableSeconds = 0.5f;
     public float tableCenterHeightAboveFloor = PingPongGeometry.TableTopHeight - PingPongGeometry.TableThickness * 0.5f;
     public bool controlServing = true;
@@ -124,12 +124,12 @@ public class PingPongPlayerTableSafety : MonoBehaviour
         var local = GetHorizontalTableLocal(headPosition);
         var halfX = tableSize.x * 0.5f;
         var halfZ = tableSize.y * 0.5f;
-        var safetyHalfX = halfX + Mathf.Max(0f, safetyMargin);
-        var safetyHalfZ = halfZ + Mathf.Max(0f, safetyMargin);
-        var warningHalfX = safetyHalfX + Mathf.Max(0f, warningOnlyDistance);
-        var warningHalfZ = safetyHalfZ + Mathf.Max(0f, warningOnlyDistance);
-        var hardHalfX = halfX + Mathf.Max(Mathf.Max(0f, hardMargin), Mathf.Max(0f, hardPauseDistance));
-        var hardHalfZ = halfZ + Mathf.Max(Mathf.Max(0f, hardMargin), Mathf.Max(0f, hardPauseDistance));
+        var safetyHalfX = halfX;
+        var safetyHalfZ = halfZ;
+        var warningHalfX = halfX;
+        var warningHalfZ = halfZ;
+        var hardHalfX = halfX;
+        var hardHalfZ = halfZ;
 
         var absX = Mathf.Abs(local.x);
         var absZ = Mathf.Abs(local.y);
@@ -233,8 +233,8 @@ public class PingPongPlayerTableSafety : MonoBehaviour
         boundaryLine.enabled = visible;
         if (!visible || tableTransform == null) return;
 
-        var halfX = tableSize.x * 0.5f + Mathf.Max(0f, safetyMargin);
-        var halfZ = tableSize.y * 0.5f + Mathf.Max(0f, safetyMargin);
+        var halfX = tableSize.x * 0.5f;
+        var halfZ = tableSize.y * 0.5f;
         var floorY = tableTransform.position.y - tableCenterHeightAboveFloor + 0.02f;
         var center = new Vector3(tableTransform.position.x, floorY, tableTransform.position.z);
         var right = tableTransform.right.normalized;
@@ -273,7 +273,7 @@ public class PingPongPlayerTableSafety : MonoBehaviour
         }
 
         toHead.Normalize();
-        var promptDistance = Mathf.Max(tableSize.x, tableSize.y) * 0.5f + safetyMargin + warningOnlyDistance + promptOuterOffsetMeters;
+        var promptDistance = Mathf.Max(tableSize.x, tableSize.y) * 0.5f + promptOuterOffsetMeters;
         warningCanvasTransform.position = tableTransform.position + toHead * promptDistance + Vector3.up * (promptHeightMeters - tableTransform.position.y);
 
         var toPrompt = warningCanvasTransform.position - headPosition;

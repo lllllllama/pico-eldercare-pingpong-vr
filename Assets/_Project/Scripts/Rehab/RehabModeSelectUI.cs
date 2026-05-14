@@ -14,6 +14,7 @@ namespace PicoElderCare.Rehab
         public Button baduanjinButton;
         public Button taiChiButton;
         public Button backButton;
+        public ModuleHomeMenu homeMenu;
 
         public RehabSessionManager sessionManager;
         public bool showTrainingSelectOnStart = true;
@@ -70,6 +71,19 @@ namespace PicoElderCare.Rehab
             SetPanelActive(trainingResultPanel, true);
         }
 
+        public void ReturnToMainEntry()
+        {
+            ResolveReferences();
+
+            if (homeMenu != null)
+            {
+                homeMenu.LoadMainEntry();
+                return;
+            }
+
+            ShowMainMenuPanel();
+        }
+
         private void StartTraining(RehabTrainingType trainingType)
         {
             ResolveReferences();
@@ -94,6 +108,11 @@ namespace PicoElderCare.Rehab
             if (sessionManager == null)
             {
                 sessionManager = FindObjectOfType<RehabSessionManager>(true);
+            }
+
+            if (homeMenu == null)
+            {
+                homeMenu = FindObjectOfType<ModuleHomeMenu>(true);
             }
         }
 
@@ -120,7 +139,8 @@ namespace PicoElderCare.Rehab
             if (backButton != null)
             {
                 backButton.onClick.RemoveListener(ShowMainMenuPanel);
-                backButton.onClick.AddListener(ShowMainMenuPanel);
+                backButton.onClick.RemoveListener(ReturnToMainEntry);
+                backButton.onClick.AddListener(ReturnToMainEntry);
             }
         }
 
