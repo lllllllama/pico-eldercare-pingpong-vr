@@ -265,7 +265,7 @@ public static class RehabSceneBuilder
 
     private static GameObject BuildEntryCanvas(UnifiedEntryMenu menu, Transform cameraTransform)
     {
-        var canvasGo = CreateWorldCanvas("MainEntryCanvas", cameraTransform, new Vector3(0f, 1.45f, 2.2f), new Vector2(900f, 520f));
+        var canvasGo = CreateWorldCanvas("MainEntryCanvas", cameraTransform, new Vector3(0f, 1.45f, 2.2f), new Vector2(1180f, 820f));
         var panel = CreateUiObject("Panel", canvasGo.transform);
         var panelRect = panel.GetComponent<RectTransform>();
         panelRect.anchorMin = Vector2.zero;
@@ -273,18 +273,170 @@ public static class RehabSceneBuilder
         panelRect.offsetMin = Vector2.zero;
         panelRect.offsetMax = Vector2.zero;
         var panelImage = panel.AddComponent<Image>();
-        panelImage.color = new Color(0.05f, 0.07f, 0.08f, 0.78f);
+        panelImage.color = new Color(0.03f, 0.05f, 0.08f, 0.86f);
 
-        CreateText(panel.transform, "Title", "PICO ElderCare", 52, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 170f), new Vector2(760f, 90f));
-        CreateText(panel.transform, "Subtitle", "请选择训练模块", 32, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, 100f), new Vector2(760f, 70f));
+        CreateEntryStar(panel.transform, "StarA", new Vector2(-430f, 260f), 8f, 0.46f);
+        CreateEntryStar(panel.transform, "StarB", new Vector2(390f, 210f), 7f, 0.38f);
+        CreateEntryStar(panel.transform, "StarC", new Vector2(-370f, -270f), 6f, 0.32f);
+        CreateEntryStar(panel.transform, "StarD", new Vector2(420f, -250f), 9f, 0.42f);
 
-        var pingPongButton = CreateButton(panel.transform, "PingPongButton", "乒乓球训练", new Vector2(-210f, -40f), new Vector2(300f, 110f));
-        UnityEventTools.AddPersistentListener(pingPongButton.onClick, menu.LoadPingPong);
+        var title = CreateText(panel.transform, "Title", "VR康养服务", 74, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 326f), new Vector2(980f, 96f));
+        title.characterSpacing = 8f;
+        title.color = new Color(1f, 1f, 1f, 0.98f);
+        CreateEntryDivider(panel.transform, "TitleDivider", new Vector2(0f, 264f), new Vector2(260f, 4f), new Color(1f, 1f, 1f, 0.52f));
 
-        var rehabButton = CreateButton(panel.transform, "RehabButton", "MR 康复运动", new Vector2(210f, -40f), new Vector2(300f, 110f));
-        UnityEventTools.AddPersistentListener(rehabButton.onClick, menu.LoadRehab);
+        CreateEntryModuleCard(
+            panel.transform,
+            "Module_HealthGame",
+            "健康游戏",
+            "乒乓球、投篮等趣味运动",
+            ElderCareIconType.Gamepad,
+            new Vector2(-285f, 82f),
+            new Vector2(460f, 220f),
+            new Color(0.18f, 0.46f, 0.91f, 0.96f),
+            true,
+            menu.LoadPingPong);
+
+        CreateEntryModuleCard(
+            panel.transform,
+            "Module_Rehab",
+            "康复运动",
+            "太极拳、八段锦养生功法",
+            ElderCareIconType.Heart,
+            new Vector2(285f, 82f),
+            new Vector2(460f, 220f),
+            new Color(0.15f, 0.66f, 0.34f, 0.96f),
+            true,
+            menu.LoadRehab);
+
+        CreateEntryModuleCard(
+            panel.transform,
+            "Module_Travel",
+            "VR旅游",
+            "长城、故宫名胜古迹",
+            ElderCareIconType.MapPin,
+            new Vector2(-285f, -190f),
+            new Vector2(460f, 220f),
+            new Color(0.55f, 0.29f, 0.89f, 0.72f),
+            false,
+            null);
+
+        CreateEntryModuleCard(
+            panel.transform,
+            "Module_Video",
+            "场景视频",
+            "VR看房、生活场景体验",
+            ElderCareIconType.Video,
+            new Vector2(285f, -190f),
+            new Vector2(460f, 220f),
+            new Color(0.91f, 0.42f, 0.12f, 0.72f),
+            false,
+            null);
+
+        var footer = CreateText(panel.transform, "FooterHint", "使用手柄或手势选择功能", 28, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -365f), new Vector2(900f, 50f));
+        footer.color = new Color(1f, 1f, 1f, 0.62f);
 
         return canvasGo;
+    }
+
+    private static Button CreateEntryModuleCard(
+        Transform parent,
+        string name,
+        string title,
+        string description,
+        ElderCareIconType iconType,
+        Vector2 anchoredPosition,
+        Vector2 size,
+        Color baseColor,
+        bool enabled,
+        UnityEngine.Events.UnityAction onClick)
+    {
+        var go = CreateUiObject(name, parent);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+
+        var panel = go.AddComponent<Image>();
+        panel.color = enabled ? baseColor : new Color(baseColor.r, baseColor.g, baseColor.b, 0.6f);
+
+        var button = go.AddComponent<Button>();
+        button.targetGraphic = panel;
+        button.interactable = enabled;
+        var colors = button.colors;
+        colors.normalColor = panel.color;
+        colors.highlightedColor = Color.Lerp(baseColor, Color.white, 0.16f);
+        colors.pressedColor = Color.Lerp(baseColor, Color.black, 0.16f);
+        colors.selectedColor = colors.highlightedColor;
+        colors.disabledColor = panel.color;
+        colors.fadeDuration = 0.08f;
+        button.colors = colors;
+
+        if (enabled && onClick != null)
+        {
+            UnityEventTools.AddPersistentListener(button.onClick, onClick);
+        }
+
+        CreateEntryDivider(go.transform, "TopHighlight", new Vector2(0f, size.y * 0.5f - 4f), new Vector2(size.x, 8f), new Color(1f, 1f, 1f, enabled ? 0.18f : 0.09f));
+
+        var icon = CreateText(go.transform, "Icon", GetEntryIconText(iconType), 62, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, 52f), new Vector2(130f, 82f));
+        icon.color = new Color(1f, 1f, 1f, enabled ? 0.95f : 0.5f);
+        icon.raycastTarget = false;
+
+        var cardTitle = CreateText(go.transform, "Title", title, 42, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(0f, -28f), new Vector2(size.x - 36f, 58f));
+        cardTitle.color = new Color(1f, 1f, 1f, enabled ? 0.98f : 0.62f);
+        cardTitle.raycastTarget = false;
+
+        var cardDescription = CreateText(go.transform, "Description", description, 23, FontStyles.Normal, TextAlignmentOptions.Center, new Vector2(0f, -78f), new Vector2(size.x - 44f, 46f));
+        cardDescription.color = new Color(1f, 1f, 1f, enabled ? 0.88f : 0.5f);
+        cardDescription.raycastTarget = false;
+
+        if (!enabled)
+        {
+            var badge = CreateText(go.transform, "StatusBadge", "待接入", 20, FontStyles.Bold, TextAlignmentOptions.Center, new Vector2(size.x * 0.5f - 58f, size.y * 0.5f - 28f), new Vector2(86f, 34f));
+            badge.color = new Color(1f, 1f, 1f, 0.58f);
+            badge.raycastTarget = false;
+        }
+
+        return button;
+    }
+
+    private static string GetEntryIconText(ElderCareIconType iconType)
+    {
+        switch (iconType)
+        {
+            case ElderCareIconType.Gamepad:
+                return "游";
+            case ElderCareIconType.Heart:
+                return "康";
+            case ElderCareIconType.MapPin:
+                return "旅";
+            case ElderCareIconType.Video:
+                return "影";
+            default:
+                return "·";
+        }
+    }
+
+    private static void CreateEntryDivider(Transform parent, string name, Vector2 anchoredPosition, Vector2 size, Color color, float cornerRadius = 2f)
+    {
+        var go = CreateUiObject(name, parent);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = size;
+        var image = go.AddComponent<Image>();
+        image.color = color;
+        image.raycastTarget = false;
+    }
+
+    private static void CreateEntryStar(Transform parent, string name, Vector2 anchoredPosition, float size, float alpha)
+    {
+        var go = CreateUiObject(name, parent);
+        var rect = go.GetComponent<RectTransform>();
+        rect.anchoredPosition = anchoredPosition;
+        rect.sizeDelta = new Vector2(size, size);
+        var image = go.AddComponent<Image>();
+        image.color = new Color(1f, 1f, 1f, alpha);
+        image.raycastTarget = false;
     }
 
     private static GameObject BuildTrainingArea(Transform parent, out RehabTrainingAreaDragHandle dragHandle)
