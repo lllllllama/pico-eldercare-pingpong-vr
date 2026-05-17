@@ -15,9 +15,12 @@ namespace PicoElderCare.Rehab
         public Button taiChiButton;
         public Button backButton;
         public ModuleHomeMenu homeMenu;
+        public ComfortWorldSpaceUIPlacer uiPlacer;
 
         public RehabSessionManager sessionManager;
         public bool showTrainingSelectOnStart = true;
+        public bool placeUiOnStart = true;
+        public bool placeUiOnMainMenuOpen = true;
 
         private void Awake()
         {
@@ -35,6 +38,11 @@ namespace PicoElderCare.Rehab
             {
                 ShowMainMenuPanel();
             }
+
+            if (placeUiOnStart)
+            {
+                PlaceUiInFrontOfUser();
+            }
         }
 
         public void ShowMainMenuPanel()
@@ -43,6 +51,11 @@ namespace PicoElderCare.Rehab
             SetPanelActive(rehabTrainingSelectPanel, false);
             SetPanelActive(rehabTrainingPanel, false);
             SetPanelActive(trainingResultPanel, false);
+
+            if (placeUiOnMainMenuOpen)
+            {
+                PlaceUiInFrontOfUser();
+            }
         }
 
         public void ShowTrainingSelectPanel()
@@ -84,6 +97,11 @@ namespace PicoElderCare.Rehab
             ShowMainMenuPanel();
         }
 
+        public void ResetUiPosition()
+        {
+            PlaceUiInFrontOfUser();
+        }
+
         private void StartTraining(RehabTrainingType trainingType)
         {
             ResolveReferences();
@@ -113,6 +131,21 @@ namespace PicoElderCare.Rehab
             if (homeMenu == null)
             {
                 homeMenu = FindObjectOfType<ModuleHomeMenu>(true);
+            }
+
+            if (uiPlacer == null)
+            {
+                uiPlacer = GetComponentInParent<ComfortWorldSpaceUIPlacer>();
+            }
+        }
+
+        private void PlaceUiInFrontOfUser()
+        {
+            ResolveReferences();
+
+            if (uiPlacer != null)
+            {
+                uiPlacer.PlaceInFrontOfUser();
             }
         }
 

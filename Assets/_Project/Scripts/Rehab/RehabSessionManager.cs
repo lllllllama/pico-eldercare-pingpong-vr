@@ -11,9 +11,13 @@ namespace PicoElderCare.Rehab
         public RehabUIController uiController;
         public RehabModeSelectUI modeSelectUI;
         public TrainingResultRecorder resultRecorder;
+        public VirtualCoachController virtualCoachController;
+        public CoachPlaybackState coachPlaybackStateOnMovementStart = CoachPlaybackState.Demonstration;
+        public bool autoCreateVirtualCoach = true;
 
         public Transform trainingAreaRoot;
         public Transform promptCanvas;
+        public bool placePromptCanvasWithTrainingArea = true;
         public TMP_Text titleText;
         public TMP_Text statusText;
         public TMP_Text timerText;
@@ -44,6 +48,7 @@ namespace PicoElderCare.Rehab
         private bool _trainingAreaPlaced;
         private float _openSpaceSearchUntilTime;
         private float _nextOpenSpaceSearchTime;
+        private string _lastCoachMovementKey;
 
         public Vector3 TrainingCenter
         {
@@ -101,6 +106,7 @@ namespace PicoElderCare.Rehab
             }
 
             var evaluation = movementEvaluator.Evaluate(sample, Time.deltaTime, paused, _elapsedTrainingSeconds, safety.pauseCount);
+            NotifyCoachForCurrentMovement(false);
             RefreshUi(evaluation, safety);
 
             if (evaluation.completed)
@@ -134,6 +140,7 @@ namespace PicoElderCare.Rehab
             _nextOpenSpaceSearchTime = 0f;
 
             var firstMovement = movementEvaluator.CurrentMovement;
+            _lastCoachMovementKey = null;
             _currentResult = RehabTrainingResult.CreateStarted(
                 firstMovement != null ? firstMovement.movementId : movementEvaluator.movementId,
                 GetTrainingDisplayName(),
@@ -154,6 +161,8 @@ namespace PicoElderCare.Rehab
                     GetCurrentStepInstruction("\u8bf7\u51c6\u5907\u5f00\u59cb"),
                     sessionDurationSeconds);
             }
+
+            NotifyCoachForCurrentMovement(true);
         }
 
         public void StartTraining(RehabTrainingType trainingType)
@@ -248,6 +257,11 @@ namespace PicoElderCare.Rehab
 
             SetStatus(completed ? "训练完成" : "训练结束");
             RefreshTimer();
+            if (virtualCoachController != null)
+            {
+                virtualCoachController.SetIdle();
+            }
+
             if (modeSelectUI != null)
             {
                 modeSelectUI.ShowTrainingResultPanel();
@@ -318,7 +332,7 @@ namespace PicoElderCare.Rehab
                 trainingAreaRoot.rotation = Quaternion.identity;
             }
 
-            if (promptCanvas != null)
+            if (promptCanvas != null && placePromptCanvasWithTrainingArea)
             {
                 var promptForward = forward;
                 promptForward.y = 0f;
@@ -350,6 +364,59 @@ namespace PicoElderCare.Rehab
             if (uiController == null) uiController = FindObjectOfType<RehabUIController>(true);
             if (modeSelectUI == null) modeSelectUI = FindObjectOfType<RehabModeSelectUI>(true);
             if (resultRecorder == null) resultRecorder = FindObjectOfType<TrainingResultRecorder>(true);
+            if (virtualCoachController == null) virtualCoachController = FindObjectOfType<VirtualCoachController>(true);
+            if (virtualCoachController == null && autoCreateVirtualCoach)
+            {
+                virtualCoachController = CreateVirtualCoachController();
+            }
+
+            if (virtualCoachController != null && virtualCoachController.userHeadTransform == null && handPoseTracker != null)
+            {
+                virtualCoachController.userHeadTransform = handPoseTracker.hmdTransform;
+            }
+        }
+
+        private VirtualCoachController CreateVirtualCoachController()
+        {
+            var coachObject = new GameObject("VirtualCoach");
+            coachObject.transform.SetParent(transform, false);
+
+            var binder = coachObject.AddComponent<CoachAnimationBinder>();
+            binder.SetDefaultMovementBindings();
+
+            var controller = coachObject.AddComponent<VirtualCoachController>();
+            controller.userHeadTransform = handPoseTracker != null ? handPoseTracker.hmdTransform : null;
+            controller.coachRoot = coachObject.transform;
+            controller.animationBinder = binder;
+            controller.defaultMovementPlaybackState = coachPlaybackStateOnMovementStart;
+            controller.playbackState = CoachPlaybackState.Idle;
+            controller.preferredDistanceMeters = 2f;
+            controller.minDistanceMeters = 1.8f;
+            controller.maxDistanceMeters = 2.2f;
+            controller.floorY = trainingFloorY;
+            controller.placeInFrontOnStart = true;
+            controller.useComfortFollow = true;
+            controller.followYawThresholdDegrees = 35f;
+            controller.followPositionThresholdMeters = 0.8f;
+            controller.followSmoothTime = 0.35f;
+            controller.maxFollowSpeedMetersPerSecond = 1.25f;
+            controller.followRotationSlerpSpeed = 4f;
+            controller.autoCreatePlaceholderCue = true;
+            return controller;
+        }
+
+        private void NotifyCoachForCurrentMovement(bool force)
+        {
+            if (virtualCoachController == null || movementEvaluator == null) return;
+
+            var movement = movementEvaluator.CurrentMovement;
+            if (movement == null) return;
+
+            var movementKey = movement.movementId + "|" + movement.movementName;
+            if (!force && movementKey == _lastCoachMovementKey) return;
+
+            _lastCoachMovementKey = movementKey;
+            virtualCoachController.PlayMovement(movement, coachPlaybackStateOnMovementStart);
         }
 
         private void RefreshTitle()

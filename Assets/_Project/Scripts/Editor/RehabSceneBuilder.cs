@@ -119,19 +119,13 @@ public static class RehabSceneBuilder
 
         SetupPicoRoomSensingManagers(managers.transform);
 
-        var entryCanvas = BuildEntryCanvas(menu, mainCamera != null ? mainCamera.transform : null);
-        var entryPlacer = entryCanvas.AddComponent<OpenSpaceCanvasPlacer>();
-        entryPlacer.hmdTransform = mainCamera != null ? mainCamera.transform : null;
-        entryPlacer.targetTransform = entryCanvas.transform;
-        entryPlacer.desiredDistanceMeters = 2.2f;
-        entryPlacer.minDistanceMeters = 1.2f;
-        entryPlacer.maxDistanceMeters = 3.0f;
-        entryPlacer.clearanceRadiusMeters = 0.55f;
-        entryPlacer.clearanceHeightMeters = 1.55f;
-        entryPlacer.canvasHeightMeters = 1.45f;
-        entryPlacer.searchDurationSeconds = 8f;
+        var uiRoot = CreateUiRoot("UIRoot", null);
+        var entryCanvas = BuildEntryCanvas(menu, null);
+        AttachUiToRoot(entryCanvas.transform, uiRoot.transform);
+        ConfigureComfortUiPlacer(uiRoot, mainCamera != null ? mainCamera.transform : null, uiRoot.transform, 2f);
 
         EditorUtility.SetDirty(managers);
+        EditorUtility.SetDirty(uiRoot);
         EditorUtility.SetDirty(entryCanvas);
         if (xrOrigin != null) EditorUtility.SetDirty(xrOrigin);
 
@@ -153,13 +147,15 @@ public static class RehabSceneBuilder
         var rehabRoot = new GameObject("Rehab");
         var visualRoot = new GameObject("RehabVisuals");
         visualRoot.transform.SetParent(rehabRoot.transform, false);
+        var uiRoot = CreateUiRoot("UIRoot", rehabRoot.transform);
         var managers = new GameObject("RehabManagers");
         managers.transform.SetParent(rehabRoot.transform, false);
         var homeMenu = managers.AddComponent<ModuleHomeMenu>();
 
         var trainingArea = BuildTrainingArea(visualRoot.transform, out var trainingAreaDragHandle);
-        var rehabUi = BuildRehabPromptCanvas(visualRoot.transform, mainCamera, homeMenu);
+        var rehabUi = BuildRehabPromptCanvas(uiRoot.transform, mainCamera, homeMenu);
         var promptCanvas = rehabUi.canvas;
+        var rehabUiPlacer = ConfigureComfortUiPlacer(uiRoot, hmd, uiRoot.transform, 2f);
 
         var poseTracker = managers.AddComponent<HandPoseTracker>();
         poseTracker.hmdTransform = hmd;
@@ -194,14 +190,19 @@ public static class RehabSceneBuilder
         uiController.safetyPromptText = rehabUi.safety;
         uiController.debugText = rehabUi.debug;
 
+        var virtualCoach = BuildVirtualCoach(visualRoot.transform, hmd);
+
         var session = managers.AddComponent<RehabSessionManager>();
         session.handPoseTracker = poseTracker;
         session.safetyMonitor = safetyMonitor;
         session.movementEvaluator = evaluator;
         session.uiController = uiController;
         session.resultRecorder = recorder;
+        session.virtualCoachController = virtualCoach;
+        session.coachPlaybackStateOnMovementStart = CoachPlaybackState.Demonstration;
         session.trainingAreaRoot = trainingArea.transform;
         session.promptCanvas = promptCanvas.transform;
+        session.placePromptCanvasWithTrainingArea = false;
         session.titleText = rehabUi.title;
         session.statusText = rehabUi.status;
         session.timerText = rehabUi.timer;
@@ -231,8 +232,11 @@ public static class RehabSceneBuilder
         modeSelectUi.taiChiButton = rehabUi.taiChiButton;
         modeSelectUi.backButton = rehabUi.backButton;
         modeSelectUi.homeMenu = homeMenu;
+        modeSelectUi.uiPlacer = rehabUiPlacer;
         modeSelectUi.sessionManager = session;
         modeSelectUi.showTrainingSelectOnStart = true;
+        modeSelectUi.placeUiOnStart = true;
+        modeSelectUi.placeUiOnMainMenuOpen = true;
         session.modeSelectUI = modeSelectUi;
         if (rehabUi.trainingBackButton != null)
         {
@@ -267,6 +271,39 @@ public static class RehabSceneBuilder
         EditorUtility.SetDirty(rehabRoot);
         if (xrOrigin != null) EditorUtility.SetDirty(xrOrigin);
         EditorSceneManager.SaveScene(scene, RehabScenePath);
+    }
+
+    private static VirtualCoachController BuildVirtualCoach(Transform parent, Transform hmd)
+    {
+        var coach = new GameObject("VirtualCoach");
+        coach.transform.SetParent(parent, false);
+        coach.transform.localPosition = new Vector3(0f, 0f, 2f);
+        coach.transform.localRotation = Quaternion.identity;
+
+        var binder = coach.AddComponent<CoachAnimationBinder>();
+        binder.SetDefaultMovementBindings();
+
+        var controller = coach.AddComponent<VirtualCoachController>();
+        controller.userHeadTransform = hmd;
+        controller.coachRoot = coach.transform;
+        controller.animationBinder = binder;
+        controller.defaultMovementPlaybackState = CoachPlaybackState.Demonstration;
+        controller.playbackState = CoachPlaybackState.Idle;
+        controller.preferredDistanceMeters = 2f;
+        controller.minDistanceMeters = 1.8f;
+        controller.maxDistanceMeters = 2.2f;
+        controller.floorY = 0f;
+        controller.placeInFrontOnStart = true;
+        controller.useComfortFollow = true;
+        controller.followYawThresholdDegrees = 35f;
+        controller.followPositionThresholdMeters = 0.8f;
+        controller.followSmoothTime = 0.35f;
+        controller.maxFollowSpeedMetersPerSecond = 1.25f;
+        controller.followRotationSlerpSpeed = 4f;
+        controller.autoCreatePlaceholderCue = true;
+
+        EditorUtility.SetDirty(coach);
+        return controller;
     }
 
     private static GameObject BuildEntryCanvas(UnifiedEntryMenu menu, Transform cameraTransform)
@@ -501,7 +538,9 @@ public static class RehabSceneBuilder
         ModuleHomeMenu homeMenu)
     {
         var canvasGo = CreateWorldCanvas("RehabPromptCanvas", null, new Vector3(0f, 1.65f, 2.35f), new Vector2(900f, 460f));
-        canvasGo.transform.SetParent(parent, true);
+        canvasGo.transform.SetParent(parent, false);
+        canvasGo.transform.localPosition = Vector3.zero;
+        canvasGo.transform.localRotation = Quaternion.identity;
         var canvas = canvasGo.GetComponent<Canvas>();
         canvas.worldCamera = mainCamera;
 
@@ -636,6 +675,47 @@ public static class RehabSceneBuilder
         return go;
     }
 
+    private static GameObject CreateUiRoot(string name, Transform parent)
+    {
+        var root = new GameObject(name);
+        if (parent != null)
+        {
+            root.transform.SetParent(parent, false);
+        }
+
+        root.transform.localPosition = Vector3.zero;
+        root.transform.localRotation = Quaternion.identity;
+        root.transform.localScale = Vector3.one;
+        return root;
+    }
+
+    private static void AttachUiToRoot(Transform uiTransform, Transform uiRoot)
+    {
+        if (uiTransform == null || uiRoot == null) return;
+
+        uiTransform.SetParent(uiRoot, false);
+        uiTransform.localPosition = Vector3.zero;
+        uiTransform.localRotation = Quaternion.identity;
+    }
+
+    private static ComfortWorldSpaceUIPlacer ConfigureComfortUiPlacer(GameObject host, Transform headTransform, Transform uiRoot, float distanceMeters)
+    {
+        var placer = EnsureComponent<ComfortWorldSpaceUIPlacer>(host);
+        placer.headTransform = headTransform;
+        placer.uiRoot = uiRoot;
+        placer.distanceMeters = distanceMeters;
+        placer.hmdHeightOffsetMeters = -0.1f;
+        placer.placeOnStart = true;
+        placer.placeOnEnable = false;
+        placer.comfortFollowEnabled = false;
+        placer.followYawThresholdDegrees = 35f;
+        placer.followPositionThresholdMeters = 0.8f;
+        placer.followSmoothTime = 0.35f;
+        placer.followRotationSlerpSpeed = 4f;
+        placer.maxFollowSpeedMetersPerSecond = 1.25f;
+        return placer;
+    }
+
     private static void AddReturnHomePanelToPingPongSceneInternal()
     {
         if (!System.IO.File.Exists(PingPongScenePath))
@@ -652,24 +732,19 @@ public static class RehabSceneBuilder
         {
             DestroySceneObjectIfFound(pingPongScene, "PingPongHomeCanvas");
             DestroySceneObjectIfFound(pingPongScene, "PingPongHomeMenu");
+            DestroySceneObjectIfFound(pingPongScene, "PingPongHomeUIRoot");
 
             var mainCamera = FindMainCameraInScene(pingPongScene);
             var menuGo = new GameObject("PingPongHomeMenu");
             var homeMenu = menuGo.AddComponent<ModuleHomeMenu>();
 
-            var canvasGo = BuildModuleHomeCanvas("PingPongHomeCanvas", homeMenu, mainCamera != null ? mainCamera.transform : null, new Vector3(-0.85f, 1.3f, 0.85f));
-            var placer = canvasGo.AddComponent<OpenSpaceCanvasPlacer>();
-            placer.hmdTransform = mainCamera != null ? mainCamera.transform : null;
-            placer.targetTransform = canvasGo.transform;
-            placer.desiredDistanceMeters = 1.35f;
-            placer.minDistanceMeters = 0.9f;
-            placer.maxDistanceMeters = 2.4f;
-            placer.clearanceRadiusMeters = 0.45f;
-            placer.clearanceHeightMeters = 1.2f;
-            placer.canvasHeightMeters = 1.25f;
-            placer.searchDurationSeconds = 6f;
+            var uiRoot = CreateUiRoot("PingPongHomeUIRoot", null);
+            var canvasGo = BuildModuleHomeCanvas("PingPongHomeCanvas", homeMenu, null, new Vector3(-0.85f, 1.3f, 0.85f));
+            AttachUiToRoot(canvasGo.transform, uiRoot.transform);
+            ConfigureComfortUiPlacer(uiRoot, mainCamera != null ? mainCamera.transform : null, uiRoot.transform, 2f);
 
             EditorUtility.SetDirty(menuGo);
+            EditorUtility.SetDirty(uiRoot);
             EditorUtility.SetDirty(canvasGo);
             EditorSceneManager.SaveScene(pingPongScene);
         }

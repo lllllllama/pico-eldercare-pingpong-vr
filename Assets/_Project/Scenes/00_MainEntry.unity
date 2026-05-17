@@ -3376,6 +3376,7 @@ GameObject:
   - component: {fileID: 1620831651}
   - component: {fileID: 1620831650}
   - component: {fileID: 1620831649}
+  - component: {fileID: 1620831655}
   m_Layer: 0
   m_Name: MainEntryCanvas
   m_TagString: Untagged
@@ -3390,7 +3391,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1620831648}
-  m_Enabled: 1
+  m_Enabled: 0
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f640efb269264d74483092e34526f7a3, type: 3}
   m_Name: 
@@ -3410,6 +3411,36 @@ MonoBehaviour:
   obstacleMask:
     serializedVersion: 2
     m_Bits: 4294967295
+  placeOnStart: 1
+  placeOnEnable: 0
+  repeatPlacementDuringSearch: 0
+  useHeadYawOnly: 1
+  useHmdHeightOffset: 1
+  hmdHeightOffsetMeters: -0.1
+--- !u!114 &1620831655
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1620831648}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a9c032b7e634b1391809eaada1a9ed9, type: 3}
+  m_Name: ""
+  m_EditorClassIdentifier: ""
+  headTransform: {fileID: 753933182}
+  uiRoot: {fileID: 1620831654}
+  distanceMeters: 2
+  hmdHeightOffsetMeters: -0.1
+  placeOnStart: 1
+  placeOnEnable: 0
+  comfortFollowEnabled: 0
+  followYawThresholdDegrees: 35
+  followPositionThresholdMeters: 0.8
+  followSmoothTime: 0.35
+  followRotationSlerpSpeed: 4
+  maxFollowSpeedMetersPerSecond: 1.25
 --- !u!114 &1620831650
 MonoBehaviour:
   m_ObjectHideFlags: 0

@@ -17,6 +17,12 @@ namespace PicoElderCare.Rehab
         public float searchDurationSeconds = 8f;
         public float searchIntervalSeconds = 0.5f;
         public LayerMask obstacleMask = ~0;
+        public bool placeOnStart = true;
+        public bool placeOnEnable;
+        public bool repeatPlacementDuringSearch;
+        public bool useHeadYawOnly = true;
+        public bool useHmdHeightOffset = true;
+        public float hmdHeightOffsetMeters = -0.1f;
 
         private float _searchUntilTime;
         private float _nextSearchTime;
@@ -37,15 +43,24 @@ namespace PicoElderCare.Rehab
             _searchUntilTime = Time.time + Mathf.Max(0f, searchDurationSeconds);
             _nextSearchTime = 0f;
             _placedOnce = false;
+
+            if (placeOnEnable)
+            {
+                PlaceCanvas();
+            }
         }
 
         private void Start()
         {
-            PlaceCanvas();
+            if (placeOnStart)
+            {
+                PlaceCanvas();
+            }
         }
 
         private void Update()
         {
+            if (!repeatPlacementDuringSearch) return;
             if (!useOpenSpacePlacement) return;
             if (Time.time > _searchUntilTime && _placedOnce) return;
             if (Time.time < _nextSearchTime) return;
@@ -62,7 +77,7 @@ namespace PicoElderCare.Rehab
 
             var result = OpenSpacePlacementSolver.FindBestPlacement(
                 hmdTransform.position,
-                hmdTransform.rotation,
+                useHeadYawOnly ? Quaternion.LookRotation(GetHeadYawForward(), Vector3.up) : hmdTransform.rotation,
                 floorY,
                 desiredDistanceMeters,
                 minDistanceMeters,
@@ -72,6 +87,13 @@ namespace PicoElderCare.Rehab
                 obstacleMask);
 
             targetTransform.position = result.center + Vector3.up * canvasHeightMeters;
+            if (useHmdHeightOffset)
+            {
+                var position = targetTransform.position;
+                position.y = hmdTransform.position.y + hmdHeightOffsetMeters;
+                targetTransform.position = position;
+            }
+
             var toCanvas = targetTransform.position - hmdTransform.position;
             toCanvas.y = 0f;
             if (toCanvas.sqrMagnitude < 0.0001f)
@@ -97,6 +119,20 @@ namespace PicoElderCare.Rehab
             {
                 hmdTransform = camera.transform;
             }
+        }
+
+        private Vector3 GetHeadYawForward()
+        {
+            var forward = hmdTransform != null
+                ? Vector3.ProjectOnPlane(hmdTransform.forward, Vector3.up)
+                : Vector3.forward;
+
+            if (forward.sqrMagnitude < 0.0001f)
+            {
+                forward = Vector3.forward;
+            }
+
+            return forward.normalized;
         }
     }
 }

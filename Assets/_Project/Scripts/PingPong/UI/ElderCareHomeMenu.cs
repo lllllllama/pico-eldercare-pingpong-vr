@@ -8,11 +8,13 @@ public class ElderCareHomeMenu : MonoBehaviour
     public BallSpawner ballSpawner;
     public ScoreManager scoreManager;
     public VrInitialViewAligner initialViewAligner;
+    public ComfortWorldSpaceUIPlacer uiPlacer;
     public Text statusText;
     public ElderCareModuleCard[] moduleCards;
     public Font uiFont;
     public bool showHomeOnStart = true;
     public bool clearBallsWhenLeavingPingPong = true;
+    public bool placeHomeUiOnShow = true;
 
     private Font _runtimeFont;
 
@@ -21,6 +23,11 @@ public class ElderCareHomeMenu : MonoBehaviour
         if (homeRoot == null)
         {
             homeRoot = gameObject;
+        }
+
+        if (uiPlacer == null)
+        {
+            uiPlacer = homeRoot.GetComponentInParent<ComfortWorldSpaceUIPlacer>();
         }
 
         ApplyReadableFont(homeRoot);
@@ -61,6 +68,7 @@ public class ElderCareHomeMenu : MonoBehaviour
     {
         SetHomeActive(true);
         SetPingPongGameplayActive(false);
+        PlaceHomeUiIfNeeded();
 
         if (ballSpawner != null)
         {
@@ -77,6 +85,14 @@ public class ElderCareHomeMenu : MonoBehaviour
         }
 
         SetStatus("使用手柄或手势选择功能");
+    }
+
+    public void ResetHomeUiPosition()
+    {
+        if (uiPlacer != null)
+        {
+            uiPlacer.PlaceInFrontOfUser();
+        }
     }
 
     public void StartPingPongModule()
@@ -142,6 +158,13 @@ public class ElderCareHomeMenu : MonoBehaviour
         {
             statusText.text = message;
         }
+    }
+
+    private void PlaceHomeUiIfNeeded()
+    {
+        if (!placeHomeUiOnShow || uiPlacer == null) return;
+
+        uiPlacer.PlaceInFrontOfUser();
     }
 
     private void ApplyReadableFont(GameObject root)

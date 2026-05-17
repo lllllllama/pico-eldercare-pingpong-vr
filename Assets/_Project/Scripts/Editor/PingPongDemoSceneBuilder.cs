@@ -1481,6 +1481,23 @@ public static class PingPongDemoSceneBuilder
         canvasGo.transform.rotation = Quaternion.identity;
         canvasGo.transform.localScale = Vector3.one * 0.0015f;
 
+        var comfortPlacer = EnsureComponent<ComfortWorldSpaceUIPlacer>(canvasGo);
+        if (comfortPlacer != null)
+        {
+            comfortPlacer.headTransform = Camera.main != null ? Camera.main.transform : null;
+            comfortPlacer.uiRoot = canvasGo.transform;
+            comfortPlacer.distanceMeters = 2f;
+            comfortPlacer.hmdHeightOffsetMeters = -0.1f;
+            comfortPlacer.placeOnStart = false;
+            comfortPlacer.placeOnEnable = false;
+            comfortPlacer.comfortFollowEnabled = false;
+            comfortPlacer.followYawThresholdDegrees = 35f;
+            comfortPlacer.followPositionThresholdMeters = 0.8f;
+            comfortPlacer.followSmoothTime = 0.35f;
+            comfortPlacer.followRotationSlerpSpeed = 4f;
+            comfortPlacer.maxFollowSpeedMetersPerSecond = 1.25f;
+        }
+
         var canvasRect = ConfigureRect(canvasGo, new Vector2(1920f, 1080f), Vector2.zero);
         var scaler = EnsureComponent<CanvasScaler>(canvasGo);
         if (scaler != null)
@@ -1516,11 +1533,13 @@ public static class PingPongDemoSceneBuilder
         menu.ballSpawner = spawner;
         menu.scoreManager = score;
         menu.initialViewAligner = Object.FindObjectOfType<VrInitialViewAligner>(true);
+        menu.uiPlacer = comfortPlacer;
         menu.statusText = footer;
         menu.moduleCards = cards.ToArray();
         menu.uiFont = CreateReadableUiFont(64);
         menu.showHomeOnStart = true;
         menu.clearBallsWhenLeavingPingPong = true;
+        menu.placeHomeUiOnShow = true;
 
         EditorUtility.SetDirty(canvasGo);
         EditorUtility.SetDirty(controllerGo);

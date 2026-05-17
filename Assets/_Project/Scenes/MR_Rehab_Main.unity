@@ -1594,8 +1594,12 @@ MonoBehaviour:
   uiController: {fileID: 1674267117}
   modeSelectUI: {fileID: 1674267116}
   resultRecorder: {fileID: 752734335}
+  virtualCoachController: {fileID: 0}
+  coachPlaybackStateOnMovementStart: 1
+  autoCreateVirtualCoach: 1
   trainingAreaRoot: {fileID: 447938368}
   promptCanvas: {fileID: 1674267111}
+  placePromptCanvasWithTrainingArea: 0
   titleText: {fileID: 886951343}
   statusText: {fileID: 877176677}
   timerText: {fileID: 338742862}
@@ -3963,6 +3967,7 @@ GameObject:
   - component: {fileID: 1674267112}
   - component: {fileID: 1674267117}
   - component: {fileID: 1674267116}
+  - component: {fileID: 1674267118}
   m_Layer: 0
   m_Name: RehabPromptCanvas
   m_TagString: Untagged
@@ -4095,8 +4100,36 @@ MonoBehaviour:
   baduanjinButton: {fileID: 1561645780}
   taiChiButton: {fileID: 2048687410}
   backButton: {fileID: 1635066088}
+  homeMenu: {fileID: 0}
+  uiPlacer: {fileID: 1674267118}
   sessionManager: {fileID: 752734334}
   showTrainingSelectOnStart: 1
+  placeUiOnStart: 1
+  placeUiOnMainMenuOpen: 1
+--- !u!114 &1674267118
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1674267110}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6a9c032b7e634b1391809eaada1a9ed9, type: 3}
+  m_Name: ""
+  m_EditorClassIdentifier: ""
+  headTransform: {fileID: 616036253}
+  uiRoot: {fileID: 1674267111}
+  distanceMeters: 2
+  hmdHeightOffsetMeters: -0.1
+  placeOnStart: 1
+  placeOnEnable: 0
+  comfortFollowEnabled: 0
+  followYawThresholdDegrees: 35
+  followPositionThresholdMeters: 0.8
+  followSmoothTime: 0.35
+  followRotationSlerpSpeed: 4
+  maxFollowSpeedMetersPerSecond: 1.25
 --- !u!114 &1674267117
 MonoBehaviour:
   m_ObjectHideFlags: 0
